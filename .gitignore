@@ -1,0 +1,19 @@
+# Ignorar arquivos de ambiente (Senhas, Tokens)
+
+.env
+
+# Ignorar o banco de dados e a pasta de dados do Docker
+
+/dados/
+*.db
+*.sqlite3
+
+# Ignorar arquivos temporários do Python
+
+pycache/
+*.pyc
+
+# Ignorar arquivos do Mac/Windows
+
+.DS_Store
+Thumbs.db

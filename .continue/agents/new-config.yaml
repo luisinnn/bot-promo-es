@@ -1,0 +1,31 @@
+name: Meu Assistente
+
+models:
+  - name: Qwen 3 Coder
+    provider: openrouter
+    model: qwen/qwen3-coder:free
+    apiKey: SUA_CHAVE_API_AQUI
+
+  - name: Poolside Laguna XS
+    provider: openrouter
+    model: poolside/laguna-xs.2:free
+    apiKey: SUA_CHAVE_API_AQUI
+
+  - name: DeepSeek V4 Flash
+    provider: openrouter
+    model: deepseek/deepseek-v4-flash:free
+    apiKey: SUA_CHAVE_API_AQUI
+
+  - name: GPT OSS 120B
+    provider: openrouter
+    model: openai/gpt-oss-120b:free
+    apiKey: SUA_CHAVE_API_AQUI
+
+defaultModel: Qwen 3 Coder
+
+tabAutocompleteModel:
+  provider: openrouter
+  model: qwen/qwen3-coder:free
+  apiKey: SUA_CHAVE_API_AQUI
+
+allowAnonymousTelemetry: false

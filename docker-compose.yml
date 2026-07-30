@@ -1,0 +1,14 @@
+# STREAMING_CHUNK: Adicionando Volumes para persistência DevOps
+
+version: '3.8'
+services:
+  bot-promocao:
+    build: .
+    container_name: c_bot_promocao
+    restart: always
+    env_file:
+      - .env
+    volumes:
+# DEVOPS PRO-TIP: Mapeia uma pasta do servidor para dentro do container.
+# Assim, se o container reiniciar ou atualizar, o banco de dados SQLite não é apagado!  
+    - ./dados:/app/data
