@@ -197,10 +197,11 @@ async def analisar_amazon(html_content, config):
     print(f"📦 Recebidos {len(items)} produtos via Amazon HTML.")
     for item in items:
         id_produto = item.get('data-asin', '')
-        titulo_elem = item.select_one('h2 a span') or item.select_one('h2 span')
+        titulo_elem = item.select_one('h2 a span') or item.select_one('h2 span') or item.select_one('.a-text-normal')
         preco_whole = item.select_one('.a-price-whole')
         preco_fraction = item.select_one('.a-price-fraction')
-        link_elem = item.select_one('h2 a')
+        # FIX: Pega o link de qualquer lugar do card se não achar no h2
+        link_elem = item.select_one('h2 a') or item.select_one('a.a-link-normal')
         
         if titulo_elem and preco_whole and link_elem and id_produto:
             titulo = titulo_elem.text.strip()
@@ -211,6 +212,8 @@ async def analisar_amazon(html_content, config):
             frac_str = preco_fraction.text.strip() if preco_fraction else "00"
             try:
                 preco_float = float(f"{whole_str}.{frac_str}")
+                # Print opcional para você ver os preços que a Amazon está retornando
+                # print(f"   [Amazon] {titulo[:40]}... | R$ {preco_float}")
                 await processar_produto(id_produto, titulo, preco_float, link, config)
             except ValueError:
                 continue
