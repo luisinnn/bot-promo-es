@@ -7,11 +7,13 @@ from bs4 import BeautifulSoup
 from curl_cffi import requests as cffi_requests
 from datetime import datetime, timedelta
 
+# Configurações de Ambiente
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 INTERVALO_CHECAGEM = int(os.environ.get("INTERVALO_CHECAGEM", 300))
 DB_PATH = os.environ.get("DB_PATH", "/app/data/historico.db")
 
+# Matriz de Monitoramento Multi-Loja
 CATEGORIAS = [
     # --- KABUM ---
     {
@@ -106,6 +108,7 @@ CATEGORIAS = [
     }
 ]
 
+# --- BANCO DE DADOS (SQLite) ---
 def init_db():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = sqlite3.connect(DB_PATH, timeout=10.0)
@@ -165,6 +168,7 @@ def limpar_alertas_antigos():
     except Exception as e:
         print(f"[❌ Erro Limpeza] Falha ao limpar banco: {e}")
 
+# --- NOTIFICAÇÃO TELEGRAM ---
 async def enviar_telegram(mensagem):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {"chat_id": TELEGRAM_CHAT_ID, "text": mensagem, "parse_mode": "HTML"}
@@ -187,6 +191,7 @@ TERMOS_BLOQUEADOS = [
     "strix", "legion", "ideapad", "macbook", "intelcore", "ryzen", "ssd"
 ]
 
+# --- PROCESSADOR CENTRAL DE PRODUTOS ---
 async def processar_produto(id_produto, titulo, preco_float, link, config):
     try:
         if not id_produto or not titulo or preco_float <= 0:
@@ -208,7 +213,7 @@ async def processar_produto(id_produto, titulo, preco_float, link, config):
 
         # 3. Valida contra o piso bug e envia alerta
         if 100.0 < preco_float <= config["piso_bug"]:
-            # Usa um ID composto por loja + produto para evitar colisão de IDs entre sites diferentes
+            # ID único composto por loja + produto para evitar colisão entre sites
             id_unico = f"{config['site']}_{id_produto}"
             if not ja_alertou(id_unico):
                 msg = f"🚨 <b>ALERTA DE PREÇO: {config['nome']}</b> 🚨\n\n🖥 {titulo}\n💵 <b>R$ {preco_float:.2f}</b>\n\n🛒 Link: {link}"
@@ -220,6 +225,8 @@ async def processar_produto(id_produto, titulo, preco_float, link, config):
     except Exception as e:
         print(f"Erro ao processar produto individual: {e}")
         return False
+
+# --- PARSERS DE CADA LOJA ---
 
 async def analisar_api_kabum(dados_json, config):
     produtos = dados_json.get('data', [])
@@ -255,11 +262,9 @@ async def analisar_terabyte(html_content, config):
         titulo = link_elem.text.strip()
         link = link_elem.get('href', '')
         
-        # Extrai o ID da URL ou do HTML
         id_match = re.search(r'pbox-(\d+)', str(card)) or re.search(r'/(\d+)', link)
         id_produto = id_match.group(1) if id_match else str(hash(link))
         
-        # Converte preço BR ("R$ 1.999,00") para float (1999.00)
         preco_texto = preco_elem.text.replace('R$', '').replace('.', '').replace(',', '.').strip()
         try:
             preco_float = float(re.sub(r'[^\d.]', '', preco_texto))
@@ -279,7 +284,6 @@ async def analisar_pichau(html_content, config):
     if script_next:
         try:
             data = json.loads(script_next.string)
-            # Navega no JSON do Next.js da Pichau
             page_props = data.get('props', {}).get('pageProps', {})
             search_data = page_props.get('initialState', {}).get('search', {}) or page_props.get('data', {})
             
@@ -288,14 +292,14 @@ async def analisar_pichau(html_content, config):
         except Exception as e:
             print(f"Aviso Pichau JSON: {e}")
 
-    # Fallback para parsing de HTML direto caso o JSON falhe
+    # Fallback para parsing via HTML puro caso o JSON falhe
     if not produtos:
         cards = soup.select('div[class*="product-card"], a[href*="/p/"]')
         print(f"📦 Recebidos {len(cards)} produtos via HTML da Pichau.")
         produtos_avaliados = 0
         for card in cards:
             link = card.get('href', '')
-            if not link.startswith('http'):
+            if link and not link.startswith('http'):
                 link = f"https://www.pichau.com.br{link}"
             titulo_elem = card.select_one('h2, h3, [class*="title"]')
             preco_elem = card.select_one('[class*="price"]')
@@ -334,7 +338,7 @@ async def analisar_amazon(html_content, config):
     produtos_avaliados = 0
     for item in items:
         id_produto = item.get('data-asin', '')
-        titulo_elem = item.select_one('h2 a span')
+        titulo_elem = item.select_one('h2 a span') or item.select_one('h2 span')
         preco_whole = item.select_one('.a-price-whole')
         preco_fraction = item.select_one('.a-price-fraction')
         link_elem = item.select_one('h2 a')
@@ -358,13 +362,12 @@ async def analisar_amazon(html_content, config):
             
     print(f"Processamento Amazon concluído ({produtos_avaliados} aprovados).")
 
+# --- GERENCIADOR DE REQUISIÇÕES HTTP ---
 async def raspar_vitrine(config):
     print(f"\n🔎 Analisando ({config['site'].upper()}): {config['nome']}")
     try:
         site = config["site"]
         
-        # DEV-TIP: Cabeçalhos idênticos aos enviados pelo Google Chrome 120 em um Windows 11 real.
-        # Isso engana os firewalls do Cloudflare (Terabyte/Pichau) e AWS WAF (Amazon).
         headers = {
             "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
             "accept-language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
@@ -374,13 +377,12 @@ async def raspar_vitrine(config):
             "sec-ch-ua-platform": '"Windows"',
             "sec-fetch-dest": "document",
             "sec-fetch-mode": "navigate",
-            "sec-fetch-site": "cross-site" if site == "amazon" else "same-origin",
+            "sec-fetch-site": "none" if site == "terabyte" else "cross-site",
             "sec-fetch-user": "?1",
             "upgrade-insecure-requests": "1",
             "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         }
 
-        # Ajusta referer e origin conforme a loja
         if site == "terabyte":
             headers["referer"] = "https://www.terabyteshop.com.br/"
         elif site == "pichau":
@@ -388,8 +390,16 @@ async def raspar_vitrine(config):
         elif site == "amazon":
             headers["referer"] = "https://www.amazon.com.br/"
 
-        # Usa Session para manter cookies e burlar Cloudflare/Imperva
         session = cffi_requests.Session(impersonate="chrome120")
+        
+        # Aquecimento de sessão para Terabyte (gera cookies para passar pelo Cloudflare)
+        if site == "terabyte":
+            try:
+                session.get("https://www.terabyteshop.com.br/", headers=headers, timeout=15)
+                await asyncio.sleep(1)
+            except Exception as e:
+                print(f"   [⚠️ Aquecimento Terabyte]: {e}")
+
         response = session.get(config["url"], headers=headers, timeout=25)
         
         if response.status_code == 200:
@@ -406,6 +416,7 @@ async def raspar_vitrine(config):
     except Exception as e:
         print(f"❌ Falha de requisição em {config['nome']}: {e}")
 
+# --- LOOP PRINCIPAL ---
 async def main():
     print("🚀 Bot V6.0 (Multi-Loja: KaBuM, Pichau, Terabyte, Amazon) Iniciado...")
     
