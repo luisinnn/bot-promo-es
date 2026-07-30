@@ -1,6 +1,9 @@
 import os
+import re
+import json
 import sqlite3
 import asyncio
+from bs4 import BeautifulSoup
 from curl_cffi import requests as cffi_requests
 from datetime import datetime, timedelta
 
@@ -10,26 +13,96 @@ INTERVALO_CHECAGEM = int(os.environ.get("INTERVALO_CHECAGEM", 300))
 DB_PATH = os.environ.get("DB_PATH", "/app/data/historico.db")
 
 CATEGORIAS = [
+    # --- KABUM ---
     {
-        "nome": "Kabum - Placas RTX 5060",
+        "nome": "KaBuM - RTX 5060",
         "url": "https://servicespub.prod.api.aws.grupokabum.com.br/catalog/v2/products?query=rtx%205060&page_number=1&page_size=100",
         "termos_obrigatorios": ["5060"],
         "piso_bug": 2300.00,
         "site": "kabum_api"
     },
     {
-        "nome": "Kabum - Placas RTX 3060",
+        "nome": "KaBuM - RTX 3060",
         "url": "https://servicespub.prod.api.aws.grupokabum.com.br/catalog/v2/products?query=rtx%203060&page_number=1&page_size=100",
         "termos_obrigatorios": ["3060"],
         "piso_bug": 2200.00,
         "site": "kabum_api"
     },
     {
-        "nome": "Kabum - Placas RX 7600 / RX 6600",
+        "nome": "KaBuM - RX 7600 / RX 6600",
         "url": "https://servicespub.prod.api.aws.grupokabum.com.br/catalog/v2/products?query=rx%206600&page_number=1&page_size=100",
-        "termos_obrigatorios": ["6600", "7600"],  # Aceita se tiver pelo menos um desses termos
+        "termos_obrigatorios": ["6600", "7600"],
         "piso_bug": 1500.00,
         "site": "kabum_api"
+    },
+
+    # --- TERABYTE ---
+    {
+        "nome": "Terabyte - RTX 5060",
+        "url": "https://www.terabyteshop.com.br/busca?str=rtx+5060",
+        "termos_obrigatorios": ["5060"],
+        "piso_bug": 2300.00,
+        "site": "terabyte"
+    },
+    {
+        "nome": "Terabyte - RTX 3060",
+        "url": "https://www.terabyteshop.com.br/busca?str=rtx+3060",
+        "termos_obrigatorios": ["3060"],
+        "piso_bug": 2200.00,
+        "site": "terabyte"
+    },
+    {
+        "nome": "Terabyte - RX 6600 / RX 7600",
+        "url": "https://www.terabyteshop.com.br/busca?str=rx+6600",
+        "termos_obrigatorios": ["6600", "7600"],
+        "piso_bug": 1500.00,
+        "site": "terabyte"
+    },
+
+    # --- PICHAU ---
+    {
+        "nome": "Pichau - RTX 5060",
+        "url": "https://www.pichau.com.br/search?q=rtx%205060",
+        "termos_obrigatorios": ["5060"],
+        "piso_bug": 2300.00,
+        "site": "pichau"
+    },
+    {
+        "nome": "Pichau - RTX 3060",
+        "url": "https://www.pichau.com.br/search?q=rtx%203060",
+        "termos_obrigatorios": ["3060"],
+        "piso_bug": 2200.00,
+        "site": "pichau"
+    },
+    {
+        "nome": "Pichau - RX 6600 / RX 7600",
+        "url": "https://www.pichau.com.br/search?q=rx%206600",
+        "termos_obrigatorios": ["6600", "7600"],
+        "piso_bug": 1500.00,
+        "site": "pichau"
+    },
+
+    # --- AMAZON BRASIL ---
+    {
+        "nome": "Amazon - RTX 5060",
+        "url": "https://www.amazon.com.br/s?k=rtx+5060",
+        "termos_obrigatorios": ["5060"],
+        "piso_bug": 2300.00,
+        "site": "amazon"
+    },
+    {
+        "nome": "Amazon - RTX 3060",
+        "url": "https://www.amazon.com.br/s?k=rtx+3060",
+        "termos_obrigatorios": ["3060"],
+        "piso_bug": 2200.00,
+        "site": "amazon"
+    },
+    {
+        "nome": "Amazon - RX 6600 / RX 7600",
+        "url": "https://www.amazon.com.br/s?k=rx+6600",
+        "termos_obrigatorios": ["6600", "7600"],
+        "piso_bug": 1500.00,
+        "site": "amazon"
     }
 ]
 
@@ -38,7 +111,6 @@ def init_db():
     conn = sqlite3.connect(DB_PATH, timeout=10.0)
     cursor = conn.cursor()
     
-    # 1. Cria a tabela caso ela não exista
     cursor.execute('''CREATE TABLE IF NOT EXISTS alertas (
         id TEXT PRIMARY KEY,
         titulo TEXT,
@@ -46,7 +118,6 @@ def init_db():
         created_at TEXT DEFAULT (datetime('now', 'localtime'))
     )''')
     
-    # 2. Se a tabela já existia sem a coluna, adiciona com uma data padrão válida
     cursor.execute("PRAGMA table_info(alertas)")
     columns = [row[1] for row in cursor.fetchall()]
     if 'created_at' not in columns:
@@ -73,17 +144,14 @@ def salvar_alerta(anuncio_id, titulo, preco):
     conn.close()
 
 def limpar_alertas_antigos():
-    """Remove alertas com mais de 30 dias para otimizar disco."""
     try:
         conn = sqlite3.connect(DB_PATH, timeout=10.0)
         cursor = conn.cursor()
-        
         limite = datetime.now() - timedelta(days=30)
         limite_str = limite.strftime('%Y-%m-%d %H:%M:%S')
         
         cursor.execute("DELETE FROM alertas WHERE created_at < ?", (limite_str,))
         removidos = cursor.rowcount
-        
         conn.commit()
         
         if removidos > 0:
@@ -94,9 +162,6 @@ def limpar_alertas_antigos():
         
         if removidos > 0:
             print(f"[🧹 Limpeza] {removidos} alertas antigos removidos (>{30} dias).")
-        else:
-            print("[🧹 Limpeza] Nenhum alerta antigo para remover.")
-            
     except Exception as e:
         print(f"[❌ Erro Limpeza] Falha ao limpar banco: {e}")
 
@@ -114,105 +179,227 @@ async def enviar_telegram(mensagem):
 
 async def teste_telegram():
     print("🧪 Testando conexão inicial com o Telegram...")
-    await enviar_telegram("🤖 <b>Bot operando!</b>\nSua EC2 está turbinada e o bot está online!")
+    await enviar_telegram("🤖 <b>Bot Multi-Loja V6.0 online!</b>\nMonitorando KaBuM, Pichau, Terabyte e Amazon!")
+
+TERMOS_BLOQUEADOS = [
+    "pcgamer", "computador", "notebook", "cpu", "workstation", "desktop",
+    "zephyrus", "laptop", "tela", "g14", "g15", "g16", "nitro", "tuf",
+    "strix", "legion", "ideapad", "macbook", "intelcore", "ryzen", "ssd"
+]
+
+async def processar_produto(id_produto, titulo, preco_float, link, config):
+    try:
+        if not id_produto or not titulo or preco_float <= 0:
+            return False
+
+        titulo_limpo = titulo.lower().replace(" ", "").replace("·", "")
+        
+        # 1. Bloqueia setups completos e laptops
+        if any(termo in titulo_limpo for termo in TERMOS_BLOQUEADOS):
+            return False
+
+        # 2. Garante que o modelo buscado (ex: "3060") esteja no título
+        termos_obrigatorios = config.get("termos_obrigatorios", [])
+        if termos_obrigatorios and not any(termo in titulo_limpo for termo in termos_obrigatorios):
+            return False
+
+        print(f"\n-> Analisando ({config['nome']}): {titulo}")
+        print(f"   [✅] PASSOU NO FILTRO! Preço: R$ {preco_float:.2f}")
+
+        # 3. Valida contra o piso bug e envia alerta
+        if 100.0 < preco_float <= config["piso_bug"]:
+            # Usa um ID composto por loja + produto para evitar colisão de IDs entre sites diferentes
+            id_unico = f"{config['site']}_{id_produto}"
+            if not ja_alertou(id_unico):
+                msg = f"🚨 <b>ALERTA DE PREÇO: {config['nome']}</b> 🚨\n\n🖥 {titulo}\n💵 <b>R$ {preco_float:.2f}</b>\n\n🛒 Link: {link}"
+                await enviar_telegram(msg)
+                salvar_alerta(id_unico, titulo, preco_float)
+            else:
+                print(f"   [💤] Já alertado anteriormente.")
+        return True
+    except Exception as e:
+        print(f"Erro ao processar produto individual: {e}")
+        return False
 
 async def analisar_api_kabum(dados_json, config):
-    try:
-        produtos = dados_json.get('data', [])
-        print(f"📦 Recebidos {len(produtos)} produtos via API da Kabum ({config['nome']}).")
+    produtos = dados_json.get('data', [])
+    print(f"📦 Recebidos {len(produtos)} produtos via KaBuM.")
+    
+    produtos_avaliados = 0
+    for item in produtos:
+        id_produto = str(item.get("id") or item.get("code", ""))
+        atributos = item.get("attributes", {})
+        titulo = atributos.get("title") or item.get("name", "")
+        preco_bruto = atributos.get("price_with_discount") or item.get("price", 0)
+        friendly_name = atributos.get("friendly_name") or item.get("friendlyName", "produto")
+        link = f"https://www.kabum.com.br/produto/{id_produto}/{friendly_name}"
         
-        TERMOS_BLOQUEADOS = [
-            "pcgamer", "computador", "notebook", "cpu", "workstation", "desktop",
-            "zephyrus", "laptop", "tela", "g14", "g15", "g16", "nitro", "tuf",
-            "strix", "legion", "ideapad", "macbook", "intelcore", "ryzen", "ssd"
-        ]
+        if await processar_produto(id_produto, titulo, float(preco_bruto), link, config):
+            produtos_avaliados += 1
+            
+    print(f"Processamento KaBuM concluído ({produtos_avaliados} aprovados).")
+
+async def analisar_terabyte(html_content, config):
+    soup = BeautifulSoup(html_content, 'html.parser')
+    cards = soup.select('.pbox')
+    print(f"📦 Recebidos {len(cards)} produtos via Terabyte.")
+    
+    produtos_avaliados = 0
+    for card in cards:
+        link_elem = card.select_one('a.pbox-title')
+        preco_elem = card.select_one('.prod-pnew span') or card.select_one('.val-avista')
         
-        termos_obrigatorios = config.get("termos_obrigatorios", [])
+        if not link_elem or not preco_elem:
+            continue
+            
+        titulo = link_elem.text.strip()
+        link = link_elem.get('href', '')
         
-        produtos_processados = 0
-        for item in produtos:
-            try:
-                id_produto = str(item.get("id") or item.get("code", ""))
-                atributos = item.get("attributes", {})
-                titulo = atributos.get("title") or item.get("name", "")
-                
-                if not id_produto or not titulo:
-                    continue
-                
-                preco_bruto = atributos.get("price_with_discount") or item.get("price", 0)
-                preco_float = float(preco_bruto)
-                if preco_float == 0:
-                    continue
-                
-                friendly_name = atributos.get("friendly_name") or item.get("friendlyName", "produto")
-                link = f"https://www.kabum.com.br/produto/{id_produto}/{friendly_name}"
-                
-                titulo_limpo = titulo.lower().replace(" ", "").replace("·", "")
-                
-                # 1. Bloqueia PCs montados, Laptops e setups completos
-                if any(termo in titulo_limpo for termo in TERMOS_BLOQUEADOS):
-                    continue
-                
-                # 2. Garante que o modelo buscado (ex: "3060") esteja explicitamente no título
-                if termos_obrigatorios and not any(termo in titulo_limpo for termo in termos_obrigatorios):
-                    continue
-                
-                print(f"\n-> Analisando: {titulo}")
-                print(f"   [✅] PASSOU NO FILTRO! Preço: R$ {preco_float:.2f}")
-                produtos_processados += 1
-                
-                if 100.0 < preco_float <= config["piso_bug"]:
-                    if not ja_alertou(id_produto):
-                        msg = f"🚨 <b>ALERTA DE PREÇO: {config['nome']}</b> 🚨\n\n🖥 {titulo}\n💵 <b>R$ {preco_float:.2f}</b>\n\n🛒 Link: {link}"
-                        await enviar_telegram(msg)
-                        salvar_alerta(id_produto, titulo, preco_float)
-                    else:
-                        print(f"   [💤] Já alertado anteriormente.")
-                        
-            except Exception as item_erro:
-                print(f"Erro num item específico: {item_erro}")
-                continue
-                
-        print(f"\nProcessamento concluído. {produtos_processados} produtos avaliados com sucesso.")
+        # Extrai o ID da URL ou do HTML
+        id_match = re.search(r'pbox-(\d+)', str(card)) or re.search(r'/(\d+)', link)
+        id_produto = id_match.group(1) if id_match else str(hash(link))
         
-    except Exception as e:
-        print(f"Erro ao ler JSON: {e}")
+        # Converte preço BR ("R$ 1.999,00") para float (1999.00)
+        preco_texto = preco_elem.text.replace('R$', '').replace('.', '').replace(',', '.').strip()
+        try:
+            preco_float = float(re.sub(r'[^\d.]', '', preco_texto))
+        except ValueError:
+            continue
+            
+        if await processar_produto(id_produto, titulo, preco_float, link, config):
+            produtos_avaliados += 1
+            
+    print(f"Processamento Terabyte concluído ({produtos_avaliados} aprovados).")
+
+async def analisar_pichau(html_content, config):
+    soup = BeautifulSoup(html_content, 'html.parser')
+    script_next = soup.find('script', id='__NEXT_DATA__')
+    
+    produtos = []
+    if script_next:
+        try:
+            data = json.loads(script_next.string)
+            # Navega no JSON do Next.js da Pichau
+            page_props = data.get('props', {}).get('pageProps', {})
+            search_data = page_props.get('initialState', {}).get('search', {}) or page_props.get('data', {})
+            
+            if isinstance(search_data, dict):
+                produtos = search_data.get('products', []) or search_data.get('items', [])
+        except Exception as e:
+            print(f"Aviso Pichau JSON: {e}")
+
+    # Fallback para parsing de HTML direto caso o JSON falhe
+    if not produtos:
+        cards = soup.select('div[class*="product-card"], a[href*="/p/"]')
+        print(f"📦 Recebidos {len(cards)} produtos via HTML da Pichau.")
+        produtos_avaliados = 0
+        for card in cards:
+            link = card.get('href', '')
+            if not link.startswith('http'):
+                link = f"https://www.pichau.com.br{link}"
+            titulo_elem = card.select_one('h2, h3, [class*="title"]')
+            preco_elem = card.select_one('[class*="price"]')
+            if titulo_elem and preco_elem:
+                titulo = titulo_elem.text.strip()
+                preco_txt = preco_elem.text.replace('R$', '').replace('.', '').replace(',', '.').strip()
+                try:
+                    preco_float = float(re.sub(r'[^\d.]', '', preco_txt))
+                    id_prod = re.search(r'-(\d+)$', link)
+                    id_produto = id_prod.group(1) if id_prod else str(hash(link))
+                    if await processar_produto(id_produto, titulo, preco_float, link, config):
+                        produtos_avaliados += 1
+                except ValueError:
+                    continue
+        return
+
+    print(f"📦 Recebidos {len(produtos)} produtos via API Pichau.")
+    produtos_avaliados = 0
+    for item in produtos:
+        id_produto = str(item.get('id', ''))
+        titulo = item.get('name', '')
+        preco_float = float(item.get('price_final') or item.get('price', 0))
+        slug = item.get('url_key') or item.get('slug', '')
+        link = f"https://www.pichau.com.br/{slug}" if slug else config['url']
+        
+        if await processar_produto(id_produto, titulo, preco_float, link, config):
+            produtos_avaliados += 1
+            
+    print(f"Processamento Pichau concluído ({produtos_avaliados} aprovados).")
+
+async def analisar_amazon(html_content, config):
+    soup = BeautifulSoup(html_content, 'html.parser')
+    items = soup.select('div[data-component-type="s-search-result"]')
+    print(f"📦 Recebidos {len(items)} produtos via Amazon.")
+    
+    produtos_avaliados = 0
+    for item in items:
+        id_produto = item.get('data-asin', '')
+        titulo_elem = item.select_one('h2 a span')
+        preco_whole = item.select_one('.a-price-whole')
+        preco_fraction = item.select_one('.a-price-fraction')
+        link_elem = item.select_one('h2 a')
+        
+        if not id_produto or not titulo_elem or not preco_whole or not link_elem:
+            continue
+            
+        titulo = titulo_elem.text.strip()
+        link = f"https://www.amazon.com.br{link_elem.get('href')}"
+        
+        whole_str = preco_whole.text.replace('.', '').replace(',', '').strip()
+        frac_str = preco_fraction.text.strip() if preco_fraction else "00"
+        
+        try:
+            preco_float = float(f"{whole_str}.{frac_str}")
+        except ValueError:
+            continue
+            
+        if await processar_produto(id_produto, titulo, preco_float, link, config):
+            produtos_avaliados += 1
+            
+    print(f"Processamento Amazon concluído ({produtos_avaliados} aprovados).")
 
 async def raspar_vitrine(config):
-    print(f"🔎 Analisando API: {config['nome']}")
+    print(f"\n🔎 Analisando ({config['site'].upper()}): {config['nome']}")
     try:
         headers = {
-            "Accept": "application/json, text/plain, */*",
-            "Origin": "https://www.kabum.com.br",
-            "Referer": "https://www.kabum.com.br/"
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+            "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         }
         
-        response = cffi_requests.get(config["url"], headers=headers, impersonate="chrome120", timeout=15)
+        response = cffi_requests.get(config["url"], headers=headers, impersonate="chrome120", timeout=20)
         
         if response.status_code == 200:
-            if config["site"] == "kabum_api":
+            site = config["site"]
+            if site == "kabum_api":
                 await analisar_api_kabum(response.json(), config)
+            elif site == "terabyte":
+                await analisar_terabyte(response.text, config)
+            elif site == "pichau":
+                await analisar_pichau(response.text, config)
+            elif site == "amazon":
+                await analisar_amazon(response.text, config)
         else:
-            print(f"⚠️ Erro {response.status_code} na API da Kabum.")
+            print(f"⚠️ Status {response.status_code} recebido de {config['nome']}")
     except Exception as e:
-        print(f"❌ Falha de requisição: {e}")
+        print(f"❌ Falha de requisição em {config['nome']}: {e}")
 
 async def main():
-    print("🚀 Bot V5.6 (Filtro por Modelo Específico) Iniciado...")
+    print("🚀 Bot V6.0 (Multi-Loja: KaBuM, Pichau, Terabyte, Amazon) Iniciado...")
     
     init_db()
     await teste_telegram()
     
     while True:
-        print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Iniciando varredura em massa...")
+        print(f"\n[{datetime.now().strftime('%H:%M:%S')}] 🔄 Iniciando varredura em massa em todas as lojas...")
         
         limpar_alertas_antigos()
         
         for cat in CATEGORIAS:
             await raspar_vitrine(cat)
-            await asyncio.sleep(5)
+            await asyncio.sleep(4)  # Pausa respeitosa entre requisições
             
-        print(f"💤 Varredura concluída. Dormindo por {INTERVALO_CHECAGEM} segundos...")
+        print(f"\n💤 Varredura concluída. Dormindo por {INTERVALO_CHECAGEM} segundos...")
         await asyncio.sleep(INTERVALO_CHECAGEM)
 
 if __name__ == "__main__":
