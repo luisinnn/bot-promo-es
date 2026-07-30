@@ -361,16 +361,38 @@ async def analisar_amazon(html_content, config):
 async def raspar_vitrine(config):
     print(f"\n🔎 Analisando ({config['site'].upper()}): {config['nome']}")
     try:
-        headers = {
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-            "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        }
+        site = config["site"]
         
-        response = cffi_requests.get(config["url"], headers=headers, impersonate="chrome120", timeout=20)
+        # DEV-TIP: Cabeçalhos idênticos aos enviados pelo Google Chrome 120 em um Windows 11 real.
+        # Isso engana os firewalls do Cloudflare (Terabyte/Pichau) e AWS WAF (Amazon).
+        headers = {
+            "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+            "accept-language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+            "cache-control": "max-age=0",
+            "sec-ch-ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": '"Windows"',
+            "sec-fetch-dest": "document",
+            "sec-fetch-mode": "navigate",
+            "sec-fetch-site": "cross-site" if site == "amazon" else "same-origin",
+            "sec-fetch-user": "?1",
+            "upgrade-insecure-requests": "1",
+            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+
+        # Ajusta referer e origin conforme a loja
+        if site == "terabyte":
+            headers["referer"] = "https://www.terabyteshop.com.br/"
+        elif site == "pichau":
+            headers["referer"] = "https://www.pichau.com.br/"
+        elif site == "amazon":
+            headers["referer"] = "https://www.amazon.com.br/"
+
+        # Usa Session para manter cookies e burlar Cloudflare/Imperva
+        session = cffi_requests.Session(impersonate="chrome120")
+        response = session.get(config["url"], headers=headers, timeout=25)
         
         if response.status_code == 200:
-            site = config["site"]
             if site == "kabum_api":
                 await analisar_api_kabum(response.json(), config)
             elif site == "terabyte":
