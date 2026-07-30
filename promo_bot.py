@@ -13,18 +13,21 @@ CATEGORIAS = [
     {
         "nome": "Kabum - Placas RTX 5060",
         "url": "https://servicespub.prod.api.aws.grupokabum.com.br/catalog/v2/products?query=rtx%205060&page_number=1&page_size=100",
+        "termos_obrigatorios": ["5060"],
         "piso_bug": 2300.00,
         "site": "kabum_api"
     },
     {
         "nome": "Kabum - Placas RTX 3060",
         "url": "https://servicespub.prod.api.aws.grupokabum.com.br/catalog/v2/products?query=rtx%203060&page_number=1&page_size=100",
+        "termos_obrigatorios": ["3060"],
         "piso_bug": 2200.00,
         "site": "kabum_api"
     },
     {
         "nome": "Kabum - Placas RX 7600 / RX 6600",
         "url": "https://servicespub.prod.api.aws.grupokabum.com.br/catalog/v2/products?query=rx%206600&page_number=1&page_size=100",
+        "termos_obrigatorios": ["6600", "7600"],  # Aceita se tiver pelo menos um desses termos
         "piso_bug": 1500.00,
         "site": "kabum_api"
     }
@@ -81,11 +84,9 @@ def limpar_alertas_antigos():
         cursor.execute("DELETE FROM alertas WHERE created_at < ?", (limite_str,))
         removidos = cursor.rowcount
         
-        # ⚠️ FIX: É necessário dar commit ANTES de rodar o VACUUM no SQLite
         conn.commit()
         
         if removidos > 0:
-            # Alterna para modo autocommit temporário para o VACUUM funcionar
             conn.isolation_level = None
             conn.execute("VACUUM")
             
@@ -120,12 +121,13 @@ async def analisar_api_kabum(dados_json, config):
         produtos = dados_json.get('data', [])
         print(f"📦 Recebidos {len(produtos)} produtos via API da Kabum ({config['nome']}).")
         
-        # Lista expansiva de termos para bloquear Notebooks, PCs montados e setups completos
         TERMOS_BLOQUEADOS = [
             "pcgamer", "computador", "notebook", "cpu", "workstation", "desktop",
             "zephyrus", "laptop", "tela", "g14", "g15", "g16", "nitro", "tuf",
             "strix", "legion", "ideapad", "macbook", "intelcore", "ryzen", "ssd"
         ]
+        
+        termos_obrigatorios = config.get("termos_obrigatorios", [])
         
         produtos_processados = 0
         for item in produtos:
@@ -147,8 +149,12 @@ async def analisar_api_kabum(dados_json, config):
                 
                 titulo_limpo = titulo.lower().replace(" ", "").replace("·", "")
                 
-                # Bloqueia PCs montados, Laptops e setups completos
+                # 1. Bloqueia PCs montados, Laptops e setups completos
                 if any(termo in titulo_limpo for termo in TERMOS_BLOQUEADOS):
+                    continue
+                
+                # 2. Garante que o modelo buscado (ex: "3060") esteja explicitamente no título
+                if termos_obrigatorios and not any(termo in titulo_limpo for termo in termos_obrigatorios):
                     continue
                 
                 print(f"\n-> Analisando: {titulo}")
@@ -192,12 +198,9 @@ async def raspar_vitrine(config):
         print(f"❌ Falha de requisição: {e}")
 
 async def main():
-    print("🚀 Bot V5.5 (Categorias Expandidas) Iniciado...")
+    print("🚀 Bot V5.6 (Filtro por Modelo Específico) Iniciado...")
     
-    # 1. Prepara o banco primeiro. Se falhar, NÃO manda spam no Telegram!
     init_db()
-    
-    # 2. Agora sim, com banco pronto, testa a conexão com o Telegram
     await teste_telegram()
     
     while True:
