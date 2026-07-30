@@ -23,23 +23,20 @@ def init_db():
     conn = sqlite3.connect(DB_PATH, timeout=10.0)
     cursor = conn.cursor()
     
-    # 1. Cria a tabela (a sintaxe do DEFAULT é válida aqui na criação inicial)
+    # 1. Cria a tabela caso ela não exista
     cursor.execute('''CREATE TABLE IF NOT EXISTS alertas (
         id TEXT PRIMARY KEY,
         titulo TEXT,
         preco REAL,
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        created_at TEXT DEFAULT (datetime('now', 'localtime'))
     )''')
     
-    # 2. Migração: Adiciona a coluna se não existir.
-    # O SQLite bloqueia funções dinâmicas (como datetime('now')) no DEFAULT do ALTER TABLE.
-    # O truque é usar CURRENT_TIMESTAMP, que é uma constante do SQLite.
+    # 2. Se a tabela já existia sem a coluna, adiciona com uma data padrão válida
     cursor.execute("PRAGMA table_info(alertas)")
     columns = [row[1] for row in cursor.fetchall()]
     if 'created_at' not in columns:
-        print("[DB] Coluna 'created_at' não encontrada. Adicionando via ALTER TABLE...")
-        # Correção Crítica Aqui:
-        cursor.execute("ALTER TABLE alertas ADD COLUMN created_at TEXT DEFAULT CURRENT_TIMESTAMP")
+        print("[DB] Coluna 'created_at' não encontrada. Adicionando coluna...")
+        cursor.execute("ALTER TABLE alertas ADD COLUMN created_at TEXT DEFAULT '2026-01-01 00:00:00'")
     
     conn.commit()
     conn.close()
@@ -55,9 +52,8 @@ def ja_alertou(anuncio_id):
 def salvar_alerta(anuncio_id, titulo, preco):
     conn = sqlite3.connect(DB_PATH, timeout=10.0)
     cursor = conn.cursor()
-    # Apenas enviamos os dados antigos. A coluna created_at será preenchida 
-    # automaticamente pelo banco graças ao 'DEFAULT CURRENT_TIMESTAMP'.
-    cursor.execute("INSERT INTO alertas (id, titulo, preco) VALUES (?, ?, ?)", (anuncio_id, titulo, preco))
+    agora = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    cursor.execute("INSERT INTO alertas (id, titulo, preco, created_at) VALUES (?, ?, ?, ?)", (anuncio_id, titulo, preco, agora))
     conn.commit()
     conn.close()
 
@@ -67,9 +63,7 @@ def limpar_alertas_antigos():
         conn = sqlite3.connect(DB_PATH, timeout=10.0)
         cursor = conn.cursor()
         
-        # Como o CURRENT_TIMESTAMP do SQLite grava em UTC (GTM+0), 
-        # a limpeza também precisa calcular a data em UTC.
-        limite = datetime.utcnow() - timedelta(days=30)
+        limite = datetime.now() - timedelta(days=30)
         limite_str = limite.strftime('%Y-%m-%d %H:%M:%S')
         
         cursor.execute("DELETE FROM alertas WHERE created_at < ?", (limite_str,))
@@ -177,13 +171,13 @@ async def raspar_vitrine(config):
         print(f"❌ Falha de requisição: {e}")
 
 async def main():
-    print("🚀 Bot V5.3 (Com Auto-Limpeza de DB Corrigida) Iniciado...")
+    print("🚀 Bot V5.4 (Estável) Iniciado...")
     
-    await teste_telegram()
-    
-    # ⚠️ SE O BOT FICAR REINICIANDO EM LOOP AQUI, O ERRO É NO DB.
-    # Com a correção aplicada acima, isso não deve mais acontecer.
+    # 1. Prepara o banco primeiro. Se falhar, NÃO manda spam no Telegram!
     init_db()
+    
+    # 2. Agora sim, com banco pronto, testa a conexão com o Telegram
+    await teste_telegram()
     
     while True:
         print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Iniciando varredura em massa...")
