@@ -11,9 +11,21 @@ DB_PATH = os.environ.get("DB_PATH", "/app/data/historico.db")
 
 CATEGORIAS = [
     {
-        "nome": "Kabum - Placas de Vídeo RTX 5060",
+        "nome": "Kabum - Placas RTX 5060",
         "url": "https://servicespub.prod.api.aws.grupokabum.com.br/catalog/v2/products?query=rtx%205060&page_number=1&page_size=100",
-        "piso_bug": 3500.00,
+        "piso_bug": 2300.00,
+        "site": "kabum_api"
+    },
+    {
+        "nome": "Kabum - Placas RTX 3060",
+        "url": "https://servicespub.prod.api.aws.grupokabum.com.br/catalog/v2/products?query=rtx%203060&page_number=1&page_size=100",
+        "piso_bug": 2200.00,
+        "site": "kabum_api"
+    },
+    {
+        "nome": "Kabum - Placas RX 7600 / RX 6600",
+        "url": "https://servicespub.prod.api.aws.grupokabum.com.br/catalog/v2/products?query=rx%206600&page_number=1&page_size=100",
+        "piso_bug": 1500.00,
         "site": "kabum_api"
     }
 ]
@@ -69,10 +81,14 @@ def limpar_alertas_antigos():
         cursor.execute("DELETE FROM alertas WHERE created_at < ?", (limite_str,))
         removidos = cursor.rowcount
         
+        # ⚠️ FIX: É necessário dar commit ANTES de rodar o VACUUM no SQLite
+        conn.commit()
+        
         if removidos > 0:
+            # Alterna para modo autocommit temporário para o VACUUM funcionar
+            conn.isolation_level = None
             conn.execute("VACUUM")
             
-        conn.commit()
         conn.close()
         
         if removidos > 0:
@@ -102,7 +118,14 @@ async def teste_telegram():
 async def analisar_api_kabum(dados_json, config):
     try:
         produtos = dados_json.get('data', [])
-        print(f"📦 Recebidos {len(produtos)} produtos via API da Kabum.")
+        print(f"📦 Recebidos {len(produtos)} produtos via API da Kabum ({config['nome']}).")
+        
+        # Lista expansiva de termos para bloquear Notebooks, PCs montados e setups completos
+        TERMOS_BLOQUEADOS = [
+            "pcgamer", "computador", "notebook", "cpu", "workstation", "desktop",
+            "zephyrus", "laptop", "tela", "g14", "g15", "g16", "nitro", "tuf",
+            "strix", "legion", "ideapad", "macbook", "intelcore", "ryzen", "ssd"
+        ]
         
         produtos_processados = 0
         for item in produtos:
@@ -122,16 +145,14 @@ async def analisar_api_kabum(dados_json, config):
                 friendly_name = atributos.get("friendly_name") or item.get("friendlyName", "produto")
                 link = f"https://www.kabum.com.br/produto/{id_produto}/{friendly_name}"
                 
-                titulo_limpo = titulo.lower().replace(" ", "")
+                titulo_limpo = titulo.lower().replace(" ", "").replace("·", "")
                 
-                if "rtx" not in titulo_limpo or "5060" not in titulo_limpo:
+                # Bloqueia PCs montados, Laptops e setups completos
+                if any(termo in titulo_limpo for termo in TERMOS_BLOQUEADOS):
                     continue
-                    
-                if any(x in titulo_limpo for x in ["pcgamer", "computador", "notebook", "cpu", "workstation", "desktop"]):
-                     continue
                 
                 print(f"\n-> Analisando: {titulo}")
-                print(f"   [✅] PASSOU NO FILTRO! Preço: R$ {preco_float}")
+                print(f"   [✅] PASSOU NO FILTRO! Preço: R$ {preco_float:.2f}")
                 produtos_processados += 1
                 
                 if 100.0 < preco_float <= config["piso_bug"]:
@@ -171,7 +192,7 @@ async def raspar_vitrine(config):
         print(f"❌ Falha de requisição: {e}")
 
 async def main():
-    print("🚀 Bot V5.4 (Estável) Iniciado...")
+    print("🚀 Bot V5.5 (Categorias Expandidas) Iniciado...")
     
     # 1. Prepara o banco primeiro. Se falhar, NÃO manda spam no Telegram!
     init_db()
