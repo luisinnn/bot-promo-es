@@ -2,8 +2,11 @@ import os
 import sqlite3
 import asyncio
 from curl_cffi import requests as cffi_requests
-from datetime import datetime, timedelta  # Adicione timedelta se não tiver
+from datetime import datetime, timedelta
 
+# O carregamento das variáveis precisa acontecer ANTES de iniciar as constantes. 
+# Recomendo muito usar a lib python-dotenv se for rodar o código direto na sua máquina Windows.
+# Como o Docker Compose injeta isso automaticamente (graças ao env_file), o os.environ vai achar as chaves.
 
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
@@ -21,7 +24,8 @@ CATEGORIAS = [
 
 def init_db():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
+    # DEV-TIP: O 'timeout' diz pro Python: "Se o banco estiver bloqueado, espere 10 segundos antes de dar crash"
+    conn = sqlite3.connect(DB_PATH, timeout=10.0) 
     cursor = conn.cursor()
     
     # 1. Cria a tabela NOVA com a coluna created_at (se não existir)
@@ -43,7 +47,7 @@ def init_db():
     conn.close()
 
 def ja_alertou(anuncio_id):
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=10.0)
     cursor = conn.cursor()
     cursor.execute("SELECT 1 FROM alertas WHERE id = ?", (anuncio_id,))
     res = cursor.fetchone()
@@ -51,15 +55,16 @@ def ja_alertou(anuncio_id):
     return res is not None
 
 def salvar_alerta(anuncio_id, titulo, preco):
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=10.0)
     cursor = conn.cursor()
     cursor.execute("INSERT INTO alertas (id, titulo, preco) VALUES (?, ?, ?)", (anuncio_id, titulo, preco))
     conn.commit()
     conn.close()
+
 def limpar_alertas_antigos():
     """Remove alertas com mais de 30 dias para otimizar disco."""
     try:
-        conn = sqlite3.connect(DB_PATH)
+        conn = sqlite3.connect(DB_PATH, timeout=10.0)
         cursor = conn.cursor()
         
         # Calcula a data limite (30 dias atrás) no formato ISO compatível com SQLite
@@ -69,6 +74,10 @@ def limpar_alertas_antigos():
         cursor.execute("DELETE FROM alertas WHERE datetime(created_at) < ?", (limite_str,))
         removidos = cursor.rowcount
         
+        # Dica DevOps: O comando VACUUM recupera o espaço em disco que foi liberado pelo DELETE
+        if removidos > 0:
+            conn.execute("VACUUM")
+            
         conn.commit()
         conn.close()
         
@@ -80,7 +89,6 @@ def limpar_alertas_antigos():
     except Exception as e:
         print(f"[❌ Erro Limpeza] Falha ao limpar banco: {e}")
 
-# FUNÇÃO ATUALIZADA: Agora no Modo Detetive para pegarmos o erro do Telegram!
 async def enviar_telegram(mensagem):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {"chat_id": TELEGRAM_CHAT_ID, "text": mensagem, "parse_mode": "HTML"}
@@ -109,8 +117,6 @@ async def analisar_api_kabum(dados_json, config):
                 atributos = item.get("attributes", {})
                 titulo = atributos.get("title") or item.get("name", "")
                 
-                print(f"\n-> Analisando: {titulo}")
-                
                 if not id_produto or not titulo:
                     continue
                 
@@ -126,14 +132,13 @@ async def analisar_api_kabum(dados_json, config):
                 
                 # Filtro focado na RTX 5060
                 if "rtx" not in titulo_limpo or "5060" not in titulo_limpo:
-                    print(f"   [X] Ignorado: Não parece ser uma RTX 5060.")
                     continue
                     
                 # Ignorar PCs montados e Workstations
-                if "pcgamer" in titulo_limpo or "computador" in titulo_limpo or "notebook" in titulo_limpo or "cpu" in titulo_limpo or "workstation" in titulo_limpo or "desktop" in titulo_limpo:
-                     print(f"   [X] Ignorado: É um Computador/Notebook montado.")
+                if any(x in titulo_limpo for x in ["pcgamer", "computador", "notebook", "cpu", "workstation", "desktop"]):
                      continue
                 
+                print(f"\n-> Analisando: {titulo}")
                 print(f"   [✅] PASSOU NO FILTRO! Preço: R$ {preco_float}")
                 produtos_processados += 1
                 
@@ -174,7 +179,7 @@ async def raspar_vitrine(config):
         print(f"❌ Falha de requisição: {e}")
 
 async def main():
-    print("🚀 Bot V5.2 (Modo Detetive) Iniciado...")
+    print("🚀 Bot V5.3 (Com Auto-Limpeza de DB) Iniciado...")
     
     # Chama o teste de mensagem logo ao ligar!
     await teste_telegram()
@@ -182,6 +187,10 @@ async def main():
     init_db()
     while True:
         print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Iniciando varredura em massa...")
+        
+        # Chama a rotina de limpeza ANTES de começar a analisar as vitrines
+        limpar_alertas_antigos()
+        
         for cat in CATEGORIAS:
             await raspar_vitrine(cat)
             await asyncio.sleep(5)

@@ -1,6 +1,5 @@
-# STREAMING_CHUNK: Adicionando Volumes para persistência DevOps
-
 version: '3.8'
+
 services:
   bot-promocao:
     build: .
@@ -9,6 +8,7 @@ services:
     env_file:
       - .env
     volumes:
-# DEVOPS PRO-TIP: Mapeia uma pasta do servidor para dentro do container.
-# Assim, se o container reiniciar ou atualizar, o banco de dados SQLite não é apagado!  
-    - ./dados:/app/data
+      # O formato "./pasta" é o correto para mapeamento local. 
+      # IMPORTANTE: A pasta "dados" será criada na sua EC2/PC host se não existir.
+      # Usar volumes NOMEADOS seria ainda melhor para evitar problemas de lock do SQLite no Windows.
+      - ./dados:/app/data
