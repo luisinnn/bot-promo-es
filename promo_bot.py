@@ -4,10 +4,6 @@ import asyncio
 from curl_cffi import requests as cffi_requests
 from datetime import datetime, timedelta
 
-# O carregamento das variáveis precisa acontecer ANTES de iniciar as constantes. 
-# Recomendo muito usar a lib python-dotenv se for rodar o código direto na sua máquina Windows.
-# Como o Docker Compose injeta isso automaticamente (graças ao env_file), o os.environ vai achar as chaves.
-
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 INTERVALO_CHECAGEM = int(os.environ.get("INTERVALO_CHECAGEM", 300))
@@ -17,31 +13,33 @@ CATEGORIAS = [
     {
         "nome": "Kabum - Placas de Vídeo RTX 5060",
         "url": "https://servicespub.prod.api.aws.grupokabum.com.br/catalog/v2/products?query=rtx%205060&page_number=1&page_size=100",
-        "piso_bug": 3500.00,  # TESTE: Força envio. Mude para o valor real desejado depois.
+        "piso_bug": 3500.00,
         "site": "kabum_api"
     }
 ]
 
 def init_db():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    # DEV-TIP: O 'timeout' diz pro Python: "Se o banco estiver bloqueado, espere 10 segundos antes de dar crash"
-    conn = sqlite3.connect(DB_PATH, timeout=10.0) 
+    conn = sqlite3.connect(DB_PATH, timeout=10.0)
     cursor = conn.cursor()
     
-    # 1. Cria a tabela NOVA com a coluna created_at (se não existir)
+    # 1. Cria a tabela (a sintaxe do DEFAULT é válida aqui na criação inicial)
     cursor.execute('''CREATE TABLE IF NOT EXISTS alertas (
         id TEXT PRIMARY KEY,
         titulo TEXT,
         preco REAL,
-        created_at TEXT DEFAULT (datetime('now', 'localtime'))
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
     )''')
     
-    # 2. Migração defensiva: Adiciona a coluna se a tabela já existia sem ela
+    # 2. Migração: Adiciona a coluna se não existir.
+    # O SQLite bloqueia funções dinâmicas (como datetime('now')) no DEFAULT do ALTER TABLE.
+    # O truque é usar CURRENT_TIMESTAMP, que é uma constante do SQLite.
     cursor.execute("PRAGMA table_info(alertas)")
     columns = [row[1] for row in cursor.fetchall()]
     if 'created_at' not in columns:
         print("[DB] Coluna 'created_at' não encontrada. Adicionando via ALTER TABLE...")
-        cursor.execute("ALTER TABLE alertas ADD COLUMN created_at TEXT DEFAULT (datetime('now', 'localtime'))")
+        # Correção Crítica Aqui:
+        cursor.execute("ALTER TABLE alertas ADD COLUMN created_at TEXT DEFAULT CURRENT_TIMESTAMP")
     
     conn.commit()
     conn.close()
@@ -57,6 +55,8 @@ def ja_alertou(anuncio_id):
 def salvar_alerta(anuncio_id, titulo, preco):
     conn = sqlite3.connect(DB_PATH, timeout=10.0)
     cursor = conn.cursor()
+    # Apenas enviamos os dados antigos. A coluna created_at será preenchida 
+    # automaticamente pelo banco graças ao 'DEFAULT CURRENT_TIMESTAMP'.
     cursor.execute("INSERT INTO alertas (id, titulo, preco) VALUES (?, ?, ?)", (anuncio_id, titulo, preco))
     conn.commit()
     conn.close()
@@ -67,14 +67,14 @@ def limpar_alertas_antigos():
         conn = sqlite3.connect(DB_PATH, timeout=10.0)
         cursor = conn.cursor()
         
-        # Calcula a data limite (30 dias atrás) no formato ISO compatível com SQLite
-        limite = datetime.now() - timedelta(days=30)
+        # Como o CURRENT_TIMESTAMP do SQLite grava em UTC (GTM+0), 
+        # a limpeza também precisa calcular a data em UTC.
+        limite = datetime.utcnow() - timedelta(days=30)
         limite_str = limite.strftime('%Y-%m-%d %H:%M:%S')
         
-        cursor.execute("DELETE FROM alertas WHERE datetime(created_at) < ?", (limite_str,))
+        cursor.execute("DELETE FROM alertas WHERE created_at < ?", (limite_str,))
         removidos = cursor.rowcount
         
-        # Dica DevOps: O comando VACUUM recupera o espaço em disco que foi liberado pelo DELETE
         if removidos > 0:
             conn.execute("VACUUM")
             
@@ -130,11 +130,9 @@ async def analisar_api_kabum(dados_json, config):
                 
                 titulo_limpo = titulo.lower().replace(" ", "")
                 
-                # Filtro focado na RTX 5060
                 if "rtx" not in titulo_limpo or "5060" not in titulo_limpo:
                     continue
                     
-                # Ignorar PCs montados e Workstations
                 if any(x in titulo_limpo for x in ["pcgamer", "computador", "notebook", "cpu", "workstation", "desktop"]):
                      continue
                 
@@ -179,16 +177,17 @@ async def raspar_vitrine(config):
         print(f"❌ Falha de requisição: {e}")
 
 async def main():
-    print("🚀 Bot V5.3 (Com Auto-Limpeza de DB) Iniciado...")
+    print("🚀 Bot V5.3 (Com Auto-Limpeza de DB Corrigida) Iniciado...")
     
-    # Chama o teste de mensagem logo ao ligar!
     await teste_telegram()
     
+    # ⚠️ SE O BOT FICAR REINICIANDO EM LOOP AQUI, O ERRO É NO DB.
+    # Com a correção aplicada acima, isso não deve mais acontecer.
     init_db()
+    
     while True:
         print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Iniciando varredura em massa...")
         
-        # Chama a rotina de limpeza ANTES de começar a analisar as vitrines
         limpar_alertas_antigos()
         
         for cat in CATEGORIAS:
