@@ -1,14 +1,16 @@
-version: '3.8'
+version: "3.8"
 
 services:
   bot-promocao:
     build: .
     container_name: c_bot_promocao
-    restart: always
+    restart: unless-stopped
+
     env_file:
       - .env
+
     volumes:
-      # O formato "./pasta" é o correto para mapeamento local. 
-      # IMPORTANTE: A pasta "dados" será criada na sua EC2/PC host se não existir.
-      # Usar volumes NOMEADOS seria ainda melhor para evitar problemas de lock do SQLite no Windows.
+      - ./promo_bot.py:/app/promo_bot.py
       - ./dados:/app/data
+
+    command: python /app/promo_bot.py

@@ -1,15 +1,13 @@
-#STREAMING_CHUNK: Atualizando as dependências do Docker para async
-
 FROM python:3.11-slim
 
 ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-# Em vez de requests e beautifulsoup, instalamos aiohttp para conexões assíncronas
+COPY requirements.txt .
 
-RUN pip install --no-cache-dir beautifulsoup4 curl_cffi
+RUN pip install --no-cache-dir -r requirements.txt
 
-COPY promo_bot.py /app/
+COPY promo_bot.py .
 
 CMD ["python", "promo_bot.py"]

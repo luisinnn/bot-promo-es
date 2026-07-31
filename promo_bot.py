@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import html
 import sqlite3
 import asyncio
 from bs4 import BeautifulSoup
@@ -11,6 +12,7 @@ TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 INTERVALO_CHECAGEM = int(os.environ.get("INTERVALO_CHECAGEM", 300))
 DB_PATH = os.environ.get("DB_PATH", "/app/data/historico.db")
+
 
 CATEGORIAS = [
     # --- KABUM ---
@@ -140,7 +142,16 @@ async def enviar_telegram(mensagem):
     try:
         response = cffi_requests.post(url, json=payload, impersonate="chrome120")
         if response.status_code != 200:
-            print(f"   [✈️] ❌ Telegram REJEITOU! Código: {response.status_code}")
+            try:
+                descricao = response.json().get("description", "").lower()
+            except Exception:
+                descricao = ""
+            if "parse" in descricao:
+                print("   [✈️] ⚠️ Erro de parsing! Reenviando sem formatação HTML...")
+                payload.pop("parse_mode")
+                response = cffi_requests.post(url, json=payload, impersonate="chrome120")
+            if response.status_code != 200:
+                print(f"   [✈️] ❌ Telegram REJEITOU! Código: {response.status_code}")
     except Exception as e:
         print(f"   [✈️] ❌ Erro Crítico na função enviar_telegram: {e}")
 
@@ -169,7 +180,7 @@ async def processar_produto(id_produto, titulo, preco_float, link, config):
             id_unico = f"{config['site']}_{id_produto}"
             print(f"   [✅] PASSOU NO FILTRO! -> {titulo[:45]}... | R$ {preco_float:.2f}")
             if not ja_alertou(id_unico):
-                msg = f"🚨 <b>ALERTA DE PREÇO: {config['nome']}</b> 🚨\n\n🖥 {titulo}\n💵 <b>R$ {preco_float:.2f}</b>\n\n🛒 Link: {link}"
+                msg = f"🚨 <b>ALERTA DE PREÇO: {config['nome']}</b> 🚨\n\n🖥 {html.escape(titulo)}\n💵 <b>R$ {preco_float:.2f}</b>\n\n🛒 <a href=\"{link}\">Comprar</a>"
                 await enviar_telegram(msg)
                 salvar_alerta(id_unico, titulo, preco_float)
             else:
