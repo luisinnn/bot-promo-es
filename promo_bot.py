@@ -94,7 +94,9 @@ TERMOS_BLOQUEADOS = [
     "macbook", "intelcore", "ryzen", "ssd",
     # Acessórios que aparecem nas buscas e não são placas de vídeo
     "ventilador", "cabo", "extens", "riser", "backplate", "suporte",
-    "watercooler", "waterblock", "bracket", "adaptador", "fonte"
+    "watercooler", "waterblock", "bracket", "adaptador", "fonte",
+    # Marcas genéricas/off-brand da Amazon (vendedores não-confiáveis)
+    "generic"
 ]
 
 def init_db():
