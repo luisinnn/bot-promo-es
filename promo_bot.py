@@ -387,69 +387,112 @@ async def analisar_pichau(html_content, config):
 
 async def analisar_terabyte(html_content, config):
     soup = BeautifulSoup(html_content, 'html.parser')
-    cards = soup.select('.pbox')
-    print(f"📦 Recebidos {len(cards)} produtos via Terabyte HTML.")
+    cards = soup.select('div.product-item__box')
+    print(f"📦 Recebidos {len(cards)} produtos via Terabyte (Playwright).")
     resultado = []
     for card in cards:
-        link_elem = card.select_one('a.pbox-title')
-        preco_elem = card.select_one('.prod-pnew span') or card.select_one('.val-avista')
-        if link_elem and preco_elem:
-            titulo = link_elem.text.strip()
-            link = link_elem.get('href', '')
-            id_match = re.search(r'pbox-(\d+)', str(card)) or re.search(r'/(\d+)', link)
-            id_produto = id_match.group(1) if id_match else str(hash(link))
-            
-            preco_texto = preco_elem.text.replace('R$', '').replace('.', '').replace(',', '.').strip()
-            try:
-                preco_float = float(re.sub(r'[^\d.]', '', preco_texto))
-                resultado.append((id_produto, titulo, preco_float, link))
-            except ValueError:
-                continue
+        link_elem = card.select_one('a[href]')
+        nome_elem = card.select_one('.product-item__name')
+        preco_elem = card.select_one('.product-item__new-price')
+        if not (link_elem and nome_elem and preco_elem):
+            continue
+        titulo = nome_elem.text.strip()
+        link = link_elem.get('href', '')
+        if link and not link.startswith("http"):
+            link = "https://www.terabyteshop.com.br" + link
+        id_match = re.search(r'/produto/(\d+)', link)
+        id_produto = id_match.group(1) if id_match else str(hash(link))
+
+        preco_texto = preco_elem.get_text(" ", strip=True).replace('R$', '').replace('.', '').replace(',', '.').strip()
+        try:
+            preco_float = float(re.sub(r'[^\d.]', '', preco_texto))
+            resultado.append((id_produto, titulo, preco_float, link))
+        except ValueError:
+            continue
     return resultado
+
+async def obter_html_playwright(url, timeout=45000):
+    try:
+        from playwright.async_api import async_playwright
+    except Exception as e:
+        print(f"   [🌐] ❌ Playwright não instalado: {e}")
+        return None
+    try:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(
+                headless=True,
+                channel="chromium-headless-shell",
+                args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
+            )
+            context = await browser.new_context(
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                locale="pt-BR",
+            )
+            page = await context.new_page()
+            try:
+                await page.goto(url, wait_until="domcontentloaded", timeout=timeout)
+                try:
+                    await page.wait_for_selector("div.product-item__box", timeout=30000)
+                except Exception:
+                    pass
+                await page.wait_for_timeout(2000)
+                return await page.content()
+            finally:
+                await context.close()
+                await browser.close()
+    except Exception as e:
+        print(f"   [🌐] ❌ Erro no Playwright: {e}")
+        return None
 
 async def raspar_vitrine(config):
     print(f"\n🔎 Solicitando: {config['nome']}")
     try:
         site = config["site"]
-        headers = {
-            "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-            "accept-language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
-            "upgrade-insecure-requests": "1",
-        }
 
-        # Cria a sessão que "engana" firewalls fingindo ser um Google Chrome real
-        session = cffi_requests.Session(impersonate="chrome120")
-        
-        # Se for site fresco com firewall, fingimos visitar a home page antes
-        if site in ["terabyte", "pichau", "amazon"]:
-            base_url = "https://www." + config["url"].split("/")[2] + "/"
-            headers["referer"] = base_url
-            try:
-                session.get(base_url, headers=headers, timeout=10)
-                await asyncio.sleep(1)
-            except:
-                pass
-
-        response = session.get(config["url"], headers=headers, timeout=15)
-        
-        if response.status_code == 200 and "just a moment" not in response.text.lower() and "cloudflare" not in response.text.lower():
-            if site == "kabum_api":
-                produtos = await analisar_api_kabum(response.json(), config)
-            elif site == "amazon":
-                produtos = await analisar_amazon(response.text, config)
-            elif site == "pichau":
-                produtos = await analisar_pichau(response.text, config)
-            elif site == "terabyte":
-                produtos = await analisar_terabyte(response.text, config)
-            else:
-                produtos = []
-            # Regra B (fase fria) considera apenas produtos que passam nos filtros de título
-            produtos_filtrados = [p for p in produtos if p[0] and p[1] and p[2] > 0 and titulo_aceitavel(p[1], config)]
-            precos_categoria = [p[2] for p in produtos_filtrados]
-            for id_produto, titulo, preco, link in produtos_filtrados:
-                await processar_produto(id_produto, titulo, preco, link, config, precos_categoria)
+        # Terabyte passa no Cloudflare apenas com navegador real (Playwright)
+        if site == "terabyte":
+            html = await obter_html_playwright(config["url"])
+            produtos = await analisar_terabyte(html, config) if html else []
         else:
-            print(f"⚠️ Acesso bloqueado / Firewall ativado (Status: {response.status_code}). Site manteve o escudo levantado para nosso IP de Datacenter.")
+            headers = {
+                "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+                "accept-language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+                "upgrade-insecure-requests": "1",
+            }
+
+            # Cria a sessão que "engana" firewalls fingindo ser um Google Chrome real
+            session = cffi_requests.Session(impersonate="chrome120")
+            
+            # Se for site fresco com firewall, fingimos visitar a home page antes
+            if site in ["pichau", "amazon"]:
+                base_url = "https://www." + config["url"].split("/")[2] + "/"
+                headers["referer"] = base_url
+                try:
+                    session.get(base_url, headers=headers, timeout=10)
+                    await asyncio.sleep(1)
+                except:
+                    pass
+
+            response = session.get(config["url"], headers=headers, timeout=15)
+            
+            if response.status_code == 200 and "just a moment" not in response.text.lower() and "cloudflare" not in response.text.lower():
+                if site == "kabum_api":
+                    produtos = await analisar_api_kabum(response.json(), config)
+                elif site == "amazon":
+                    produtos = await analisar_amazon(response.text, config)
+                elif site == "pichau":
+                    produtos = await analisar_pichau(response.text, config)
+                else:
+                    produtos = []
+            else:
+                print(f"⚠️ Acesso bloqueado / Firewall ativado (Status: {response.status_code}). Site manteve o escudo levantado para nosso IP de Datacenter.")
+                produtos = []
+
+        # Regra B (fase fria) considera apenas produtos que passam nos filtros de título
+        produtos_filtrados = [p for p in produtos if p[0] and p[1] and p[2] > 0 and titulo_aceitavel(p[1], config)]
+        precos_categoria = [p[2] for p in produtos_filtrados]
+        for id_produto, titulo, preco, link in produtos_filtrados:
+            await processar_produto(id_produto, titulo, preco, link, config, precos_categoria)
             
     except Exception as e:
         print(f"❌ Falha de conexão: {e}")
