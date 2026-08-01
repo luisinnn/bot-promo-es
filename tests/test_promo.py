@@ -56,6 +56,7 @@ def test_titulo_filtros():
     assert not promo_bot.titulo_aceitavel("Cabo de extensão PCIe X16 RTX 5060", config_5060)
     assert not promo_bot.titulo_aceitavel("Placa gráfica de ventilador VGA RTX 3060", config_5060)
     assert not promo_bot.titulo_aceitavel("Geforce 6600LE PCI Express VGA 256MB", config_rx)
+    assert not promo_bot.titulo_aceitavel("Generic Placa de vídeo AMD RX 5700 XT 8 GB Desempenho igual ao RTX 3060", config_5060)
     assert promo_bot.titulo_aceitavel("Placa de Vídeo MSI RTX 5060 Ventus 2X OC", config_5060)
     assert promo_bot.titulo_aceitavel("Placa de Vídeo ASRock RX 6600 CLD 8G", config_rx)
     assert not promo_bot.titulo_aceitavel("PC Gamer RTX 5060 Completo", config_5060)
