@@ -1,0 +1,50 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Instalar dependencias
+        run: python -m pip install -r requirements.txt
+
+      - name: Compilar e testar
+        run: |
+          python -m py_compile promo_bot.py
+          python tests/test_promo.py
+
+      - name: Copiar arquivos da aplicacao para a EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          port: 22
+          source: "docker-compose.yml,Dockerfile,promo_bot.py,requirements.txt"
+          target: "/home/${{ secrets.SSH_USERNAME }}/bot-promo-es"
+
+      - name: Rebuild e subir containers na EC2
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          port: 22
+          script: |
+            cd "/home/${{ secrets.SSH_USERNAME }}/bot-promo-es"
+            if docker compose version >/dev/null 2>&1; then
+              docker compose up --build -d
+            else
+              docker-compose up --build -d
+            fi
