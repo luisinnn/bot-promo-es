@@ -144,6 +144,35 @@ async def test_fallback_parse():
     print("OK 8: fallback de parse no enviar_telegram")
 
 
+async def test_analisar_terabyte():
+    html = """
+    <div class="product-item__box">
+      <a href="/produto/39095/placa-de-video-msi-rtx-5060">
+        <div class="product-item__name">Placa de Vídeo MSI NVIDIA GeForce RTX 5060 Ventus 2X OC</div>
+        <div class="product-item__new-price">R$ 3.899,99\nà vista no Pix</div>
+      </a>
+    </div>
+    <div class="product-item__box">
+      <a href="/produto/42569/placa-de-video-palit-rtx-5060">
+        <div class="product-item__name">Placa de Vídeo Palit NVIDIA GeForce RTX 5060</div>
+        <div class="product-item__new-price">R$ 2.499,00</div>
+      </a>
+    </div>
+    <div class="product-item__box">
+      <div class="product-item__name">Sem preço novo</div>
+      <div class="product-item__old-price">De: R$ 3.000,00</div>
+    </div>
+    """
+    produtos = await promo_bot.analisar_terabyte(html, {})
+    assert len(produtos) == 2, f"esperado 2, veio {len(produtos)}"
+    id1, titulo1, preco1, link1 = produtos[0]
+    assert id1 == "39095"
+    assert preco1 == 3899.99
+    assert link1 == "https://www.terabyteshop.com.br/produto/39095/placa-de-video-msi-rtx-5060"
+    assert produtos[1][2] == 2499.0
+    print("OK 9: parser terabyte (estrutura nova product-item)")
+
+
 async def main():
     promo_bot.init_db()
     test_estatisticas()
@@ -153,6 +182,7 @@ async def main():
     test_fallback_piso()
     await test_mensagem_e_realerta()
     await test_fallback_parse()
+    await test_analisar_terabyte()
 
 
 asyncio.run(main())
