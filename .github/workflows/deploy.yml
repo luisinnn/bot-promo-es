@@ -32,7 +32,7 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           port: 22
           source: "docker-compose.yml,Dockerfile,promo_bot.py,requirements.txt"
-          target: "/home/${{ secrets.SSH_USERNAME }}/bot-promo-es"
+          target: "/home/${{ secrets.SSH_USERNAME }}/bot_promocoes"
 
       - name: Rebuild e subir containers na EC2
         uses: appleboy/ssh-action@v1
@@ -42,7 +42,7 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           port: 22
           script: |
-            cd "/home/${{ secrets.SSH_USERNAME }}/bot-promo-es"
+            cd "/home/${{ secrets.SSH_USERNAME }}/bot_promocoes"
             if docker compose version >/dev/null 2>&1; then
               docker compose up --build -d
             else
