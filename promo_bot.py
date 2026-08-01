@@ -18,6 +18,7 @@ DIAS_HISTORICO = int(os.environ.get("DIAS_HISTORICO", 30))
 MIN_AMOSTRAS = int(os.environ.get("MIN_AMOSTRAS", 3))
 MIN_PRODUTOS_CATEGORIA = int(os.environ.get("MIN_PRODUTOS_CATEGORIA", 5))
 QUEDA_PARA_REALERTAR = float(os.environ.get("QUEDA_PARA_REALERTAR", 0.05))
+FATOR_OUTLIER = float(os.environ.get("FATOR_OUTLIER", 0.75))
 
 
 CATEGORIAS = [
@@ -25,21 +26,21 @@ CATEGORIAS = [
     {
         "nome": "KaBuM - RTX 5060",
         "url": "https://servicespub.prod.api.aws.grupokabum.com.br/catalog/v2/products?query=rtx%205060&page_number=1&page_size=100",
-        "termos_obrigatorios": ["5060"],
+        "termos_obrigatorios": ["rtx5060"],
         "piso_bug": 2400.00,
         "site": "kabum_api"
     },
     {
         "nome": "KaBuM - RTX 3060",
         "url": "https://servicespub.prod.api.aws.grupokabum.com.br/catalog/v2/products?query=rtx%203060&page_number=1&page_size=100",
-        "termos_obrigatorios": ["3060"],
+        "termos_obrigatorios": ["rtx3060"],
         "piso_bug": 2200.00,
         "site": "kabum_api"
     },
     {
         "nome": "KaBuM - RX 7600 / RX 6600",
         "url": "https://servicespub.prod.api.aws.grupokabum.com.br/catalog/v2/products?query=rx%206600&page_number=1&page_size=100",
-        "termos_obrigatorios": ["6600", "7600"],
+        "termos_obrigatorios": ["rx6600", "rx7600"],
         "piso_bug": 1500.00,
         "site": "kabum_api"
     },
@@ -48,21 +49,21 @@ CATEGORIAS = [
     {
         "nome": "Amazon - RTX 5060",
         "url": "https://www.amazon.com.br/s?k=rtx+5060",
-        "termos_obrigatorios": ["5060"],
+        "termos_obrigatorios": ["rtx5060"],
         "piso_bug": 2400.00,
         "site": "amazon"
     },
     {
         "nome": "Amazon - RTX 3060",
         "url": "https://www.amazon.com.br/s?k=rtx+3060",
-        "termos_obrigatorios": ["3060"],
+        "termos_obrigatorios": ["rtx3060"],
         "piso_bug": 2200.00,
         "site": "amazon"
     },
     {
         "nome": "Amazon - RX 6600 / RX 7600",
         "url": "https://www.amazon.com.br/s?k=rx+6600",
-        "termos_obrigatorios": ["6600", "7600"],
+        "termos_obrigatorios": ["rx6600", "rx7600"],
         "piso_bug": 1500.00,
         "site": "amazon"
     },
@@ -71,7 +72,7 @@ CATEGORIAS = [
     {
         "nome": "Pichau - RTX 5060",
         "url": "https://www.pichau.com.br/search?q=rtx%205060",
-        "termos_obrigatorios": ["5060"],
+        "termos_obrigatorios": ["rtx5060"],
         "piso_bug": 2400.00,
         "site": "pichau"
     },
@@ -80,7 +81,7 @@ CATEGORIAS = [
     {
         "nome": "Terabyte - RTX 5060",
         "url": "https://www.terabyteshop.com.br/busca?str=rtx+5060",
-        "termos_obrigatorios": ["5060"],
+        "termos_obrigatorios": ["rtx5060"],
         "piso_bug": 2400.00,
         "site": "terabyte"
     }
@@ -90,7 +91,10 @@ CATEGORIAS = [
 TERMOS_BLOQUEADOS = [
     "pcgamer", "computador", "notebook", "cpu", "workstation", "desktop",
     "zephyrus", "laptop", "tela", "g14", "g15", "g16", "legion", "ideapad", 
-    "macbook", "intelcore", "ryzen", "ssd"
+    "macbook", "intelcore", "ryzen", "ssd",
+    # Acessórios que aparecem nas buscas e não são placas de vídeo
+    "ventilador", "cabo", "extens", "riser", "backplate", "suporte",
+    "watercooler", "waterblock", "bracket", "adaptador", "fonte"
 ]
 
 def init_db():
@@ -104,9 +108,24 @@ def init_db():
         created_at TEXT DEFAULT CURRENT_TIMESTAMP
     )''')
     cursor.execute("PRAGMA table_info(alertas)")
-    columns = [row[1] for row in cursor.fetchall()]
-    if 'created_at' not in columns:
+    colunas = cursor.fetchall()
+    nomes = [row[1] for row in colunas]
+    if 'created_at' not in nomes:
         cursor.execute("ALTER TABLE alertas ADD COLUMN created_at TEXT DEFAULT CURRENT_TIMESTAMP")
+    else:
+        default_created = next((row[4] for row in colunas if row[1] == 'created_at'), None)
+        if default_created is not None and str(default_created).upper() != "CURRENT_TIMESTAMP":
+            cursor.execute("BEGIN")
+            cursor.execute('''CREATE TABLE alertas_novo (
+                id TEXT PRIMARY KEY,
+                titulo TEXT,
+                preco REAL,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )''')
+            cursor.execute("INSERT INTO alertas_novo (id, titulo, preco, created_at) SELECT id, titulo, preco, created_at FROM alertas")
+            cursor.execute("DROP TABLE alertas")
+            cursor.execute("ALTER TABLE alertas_novo RENAME TO alertas")
+            cursor.execute("COMMIT")
     cursor.execute('''CREATE TABLE IF NOT EXISTS precos (
         id TEXT,
         titulo TEXT,
@@ -155,6 +174,7 @@ def historico_precos(id_unico, dias=None):
     return precos
 
 def limpar_alertas_antigos():
+    conn = None
     try:
         conn = sqlite3.connect(DB_PATH, timeout=10.0)
         cursor = conn.cursor()
@@ -162,16 +182,18 @@ def limpar_alertas_antigos():
         limite_str = limite.strftime('%Y-%m-%d %H:%M:%S')
         cursor.execute("DELETE FROM alertas WHERE created_at < ?", (limite_str,))
         removidos = cursor.rowcount
+        conn.commit()
         if removidos > 0:
             conn.execute("VACUUM")
-        conn.commit()
-        conn.close()
-        if removidos > 0:
             print(f"[🧹 Limpeza] {removidos} alertas antigos removidos (>{30} dias).")
     except Exception as e:
         print(f"[❌ Erro Limpeza] Falha ao limpar banco: {e}")
+    finally:
+        if conn:
+            conn.close()
 
 def limpar_precos_antigos():
+    conn = None
     try:
         conn = sqlite3.connect(DB_PATH, timeout=10.0)
         cursor = conn.cursor()
@@ -180,11 +202,13 @@ def limpar_precos_antigos():
         cursor.execute("DELETE FROM precos WHERE coletado_em < ?", (limite_str,))
         removidos = cursor.rowcount
         conn.commit()
-        conn.close()
         if removidos > 0:
             print(f"[🧹 Limpeza] {removidos} registros de preco antigos removidos (>90 dias).")
     except Exception as e:
         print(f"[❌ Erro Limpeza] Falha ao limpar historico de precos: {e}")
+    finally:
+        if conn:
+            conn.close()
 
 def percentil(valores, p):
     if not valores:
@@ -196,6 +220,15 @@ def percentil(valores, p):
     if c >= len(ordenados):
         return ordenados[-1]
     return ordenados[f] + (ordenados[c] - ordenados[f]) * (k - f)
+
+def titulo_aceitavel(titulo, config):
+    titulo_limpo = titulo.lower().replace(" ", "").replace("·", "")
+    if any(termo in titulo_limpo for termo in TERMOS_BLOQUEADOS):
+        return False
+    termos_obrigatorios = config.get("termos_obrigatorios", [])
+    if termos_obrigatorios and not any(termo in titulo_limpo for termo in termos_obrigatorios):
+        return False
+    return True
 
 def avaliar_preco_dinamico(id_unico, preco, precos_categoria):
     historico = historico_precos(id_unico)
@@ -212,9 +245,10 @@ def avaliar_preco_dinamico(id_unico, preco, precos_categoria):
             return True, "📉 Preço abaixo do percentil 25 do histórico"
         return False, None
     if precos_categoria and len(precos_categoria) >= MIN_PRODUTOS_CATEGORIA:
-        q25 = percentil(precos_categoria, 0.25)
-        if preco <= q25:
-            return True, "⚡ Outlier barato da categoria"
+        mediana_cat = percentil(precos_categoria, 0.5)
+        if mediana_cat and preco <= mediana_cat * FATOR_OUTLIER:
+            pct = (1 - preco / mediana_cat) * 100
+            return True, f"⚡ Outlier barato da categoria ({pct:.0f}% abaixo da mediana)"
     return False, None
 
 def verificar_preco_baixo(id_unico, preco, precos_categoria, config):
@@ -254,15 +288,8 @@ async def processar_produto(id_produto, titulo, preco_float, link, config, preco
         if not id_produto or not titulo or preco_float <= 0:
             return False
 
-        titulo_limpo = titulo.lower().replace(" ", "").replace("·", "")
-        
-        # 1. Filtro Anti-Lixo (PCs, Notebooks, Processadores perdidos)
-        if any(termo in titulo_limpo for termo in TERMOS_BLOQUEADOS):
-            return False
-
-        # 2. Exigência do Modelo Exato no título (Impede a 3050 de aparecer na 3060)
-        termos_obrigatorios = config.get("termos_obrigatorios", [])
-        if termos_obrigatorios and not any(termo in titulo_limpo for termo in termos_obrigatorios):
+        # 1+2. Filtros de título (Anti-Lixo, acessórios e modelo exato)
+        if not titulo_aceitavel(titulo, config):
             return False
 
         id_unico = f"{config['site']}_{id_produto}"
@@ -416,8 +443,10 @@ async def raspar_vitrine(config):
                 produtos = await analisar_terabyte(response.text, config)
             else:
                 produtos = []
-            precos_categoria = [p[2] for p in produtos if p[2] > 0]
-            for id_produto, titulo, preco, link in produtos:
+            # Regra B (fase fria) considera apenas produtos que passam nos filtros de título
+            produtos_filtrados = [p for p in produtos if p[0] and p[1] and p[2] > 0 and titulo_aceitavel(p[1], config)]
+            precos_categoria = [p[2] for p in produtos_filtrados]
+            for id_produto, titulo, preco, link in produtos_filtrados:
                 await processar_produto(id_produto, titulo, preco, link, config, precos_categoria)
         else:
             print(f"⚠️ Acesso bloqueado / Firewall ativado (Status: {response.status_code}). Site manteve o escudo levantado para nosso IP de Datacenter.")

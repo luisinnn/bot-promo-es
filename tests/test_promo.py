@@ -45,7 +45,21 @@ def test_regra_b_outlier_categoria():
     assert eh and "Outlier" in motivo, f"esperado outlier, veio: {motivo}"
     eh, _ = promo_bot.avaliar_preco_dinamico("site_outlier", 2300, precos_categoria)
     assert not eh
-    print("OK 2: regra B (outlier instantaneo da categoria)")
+    eh, _ = promo_bot.avaliar_preco_dinamico("site_outlier", 1900, precos_categoria)
+    assert not eh, "preco abaixo do q25 mas nao do fator estrito nao deveria alertar"
+    print("OK 2: regra B estrita (outlier so quando >=25% abaixo da mediana)")
+
+
+def test_titulo_filtros():
+    config_5060 = {"termos_obrigatorios": ["rtx5060"]}
+    config_rx = {"termos_obrigatorios": ["rx6600", "rx7600"]}
+    assert not promo_bot.titulo_aceitavel("Cabo de extensão PCIe X16 RTX 5060", config_5060)
+    assert not promo_bot.titulo_aceitavel("Placa gráfica de ventilador VGA RTX 3060", config_5060)
+    assert not promo_bot.titulo_aceitavel("Geforce 6600LE PCI Express VGA 256MB", config_rx)
+    assert promo_bot.titulo_aceitavel("Placa de Vídeo MSI RTX 5060 Ventus 2X OC", config_5060)
+    assert promo_bot.titulo_aceitavel("Placa de Vídeo ASRock RX 6600 CLD 8G", config_rx)
+    assert not promo_bot.titulo_aceitavel("PC Gamer RTX 5060 Completo", config_5060)
+    print("OK 3: filtros de titulo (acessorios e modelo exato)")
 
 
 def test_regra_a_historico():
@@ -58,7 +72,7 @@ def test_regra_a_historico():
     assert eh and "percentil" in motivo, f"esperado percentil 25, veio: {motivo}"
     eh, _ = promo_bot.avaliar_preco_dinamico(id_u, 2050, None)
     assert not eh
-    print("OK 3: regra A (historico: novo minimo / % da media / p25)")
+    print("OK 4: regra A (historico: novo minimo / % da media / p25)")
 
 
 def test_fallback_piso():
@@ -70,7 +84,7 @@ def test_fallback_piso():
         "site_frio", 2500.0, None, {"piso_bug": 2400.0}
     )
     assert not eh
-    print("OK 4: fallback piso manual como trava")
+    print("OK 5: fallback piso manual como trava")
 
 
 async def test_mensagem_e_realerta():
@@ -90,7 +104,7 @@ async def test_mensagem_e_realerta():
     assert "<Gigabyte>" not in msg
     assert f'<a href="{link}">Comprar</a>' in msg
     assert "Trava" in msg
-    print("OK 5: mensagem com escape, ancora e motivo")
+    print("OK 6: mensagem com escape, ancora e motivo")
 
     await promo_bot.processar_produto("rea", titulo, 1900.0, link, config)
     assert len(captured) == 2, "esperado re-alerta por queda de 5%"
@@ -99,7 +113,7 @@ async def test_mensagem_e_realerta():
 
     await promo_bot.processar_produto("rea", titulo, 1900.0, link, config)
     assert len(captured) == 2, "nao deveria re-alertar sem queda relevante"
-    print("OK 6: re-alerta apenas em queda >= 5%")
+    print("OK 7: re-alerta apenas em queda >= 5%")
 
 
 async def test_fallback_parse():
@@ -127,13 +141,14 @@ async def test_fallback_parse():
     promo_bot.cffi_requests.post = fake_post2
     await promo_bot.enviar_telegram("outra msg")
     assert len(calls) == 1, "deveria reenviar somente em erro de parse"
-    print("OK 7: fallback de parse no enviar_telegram")
+    print("OK 8: fallback de parse no enviar_telegram")
 
 
 async def main():
     promo_bot.init_db()
     test_estatisticas()
     test_regra_b_outlier_categoria()
+    test_titulo_filtros()
     test_regra_a_historico()
     test_fallback_piso()
     await test_mensagem_e_realerta()
