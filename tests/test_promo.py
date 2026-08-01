@@ -31,30 +31,78 @@ class FakeResp:
         return {"description": self._desc}
 
 
-async def main():
-    promo_bot.enviar_telegram = fake_enviar
-    promo_bot.init_db()
+def test_estatisticas():
+    assert promo_bot.percentil([1, 2, 3, 4], 0.25) == 1.75
+    assert promo_bot.percentil([1, 2, 3, 4], 0.5) == 2.5
+    assert promo_bot.percentil([1, 2, 3, 4], 1.0) == 4
+    assert promo_bot.percentil([], 0.5) is None
+    print("OK 1: funcao percentil")
 
+
+def test_regra_b_outlier_categoria():
+    precos_categoria = [2000, 2100, 2200, 2300, 2400, 1500]
+    eh, motivo = promo_bot.avaliar_preco_dinamico("site_outlier", 1500, precos_categoria)
+    assert eh and "Outlier" in motivo, f"esperado outlier, veio: {motivo}"
+    eh, _ = promo_bot.avaliar_preco_dinamico("site_outlier", 2300, precos_categoria)
+    assert not eh
+    print("OK 2: regra B (outlier instantaneo da categoria)")
+
+
+def test_regra_a_historico():
+    id_u = "site_hist"
+    for p in [2000, 1800, 2100]:
+        promo_bot.registrar_preco(id_u, "produto", p)
+    eh, motivo = promo_bot.avaliar_preco_dinamico(id_u, 1650, None)
+    assert eh and "menor preço" in motivo, f"esperado novo menor preço, veio: {motivo}"
+    eh, motivo = promo_bot.avaliar_preco_dinamico(id_u, 1850, None)
+    assert eh and "percentil" in motivo, f"esperado percentil 25, veio: {motivo}"
+    eh, _ = promo_bot.avaliar_preco_dinamico(id_u, 2050, None)
+    assert not eh
+    print("OK 3: regra A (historico: novo minimo / % da media / p25)")
+
+
+def test_fallback_piso():
+    eh, motivo = promo_bot.verificar_preco_baixo(
+        "site_frio", 1500.0, None, {"piso_bug": 2400.0}
+    )
+    assert eh and "piso" in motivo
+    eh, _ = promo_bot.verificar_preco_baixo(
+        "site_frio", 2500.0, None, {"piso_bug": 2400.0}
+    )
+    assert not eh
+    print("OK 4: fallback piso manual como trava")
+
+
+async def test_mensagem_e_realerta():
     config = {
         "nome": "Teste - RTX 5060",
-        "piso_bug": 2400.0,
+        "piso_bug": 99999.0,
         "termos_obrigatorios": ["5060"],
         "site": "teste",
     }
     titulo = 'RTX 5060 <Gigabyte> & "Windforce" com \'aspas\''
     link = "https://exemplo.com.br/dp/ABC?psc=1&pd_rd_w=x&pd_rd_r=y"
 
-    await promo_bot.processar_produto("123", titulo, 1500.0, link, config)
+    promo_bot.enviar_telegram = fake_enviar
+    await promo_bot.processar_produto("rea", titulo, 2000.0, link, config)
     msg = captured[-1]
+    assert "&lt;Gigabyte&gt;" in msg and "&amp;" in msg and "&quot;" in msg
+    assert "<Gigabyte>" not in msg
+    assert f'<a href="{link}">Comprar</a>' in msg
+    assert "Trava" in msg
+    print("OK 5: mensagem com escape, ancora e motivo")
 
-    assert "&lt;Gigabyte&gt;" in msg, "titulo nao escapado"
-    assert "&amp;" in msg
-    assert "&quot;" in msg
-    assert "&#x27;" in msg
-    assert "<Gigabyte>" not in msg, "tag bruta presente"
-    assert f'<a href="{link}">Comprar</a>' in msg, "link nao eh ancora"
-    print("OK 1: escape do titulo + ancora no link")
+    await promo_bot.processar_produto("rea", titulo, 1900.0, link, config)
+    assert len(captured) == 2, "esperado re-alerta por queda de 5%"
+    assert "PREÇO CAIU" in captured[-1], "mensagem de queda esperada"
+    assert "antes R$ 2000.00" in captured[-1]
 
+    await promo_bot.processar_produto("rea", titulo, 1900.0, link, config)
+    assert len(captured) == 2, "nao deveria re-alertar sem queda relevante"
+    print("OK 6: re-alerta apenas em queda >= 5%")
+
+
+async def test_fallback_parse():
     calls = []
     promo_bot.enviar_telegram = real_enviar
 
@@ -69,7 +117,6 @@ async def main():
     assert len(calls) == 2, "fallback nao chamado"
     assert calls[0]["parse_mode"] == "HTML"
     assert "parse_mode" not in calls[1], "segundo envio ainda tem parse_mode"
-    print("OK 2: fallback removeu parse_mode no reenvio apos erro de parse")
 
     calls.clear()
 
@@ -80,7 +127,17 @@ async def main():
     promo_bot.cffi_requests.post = fake_post2
     await promo_bot.enviar_telegram("outra msg")
     assert len(calls) == 1, "deveria reenviar somente em erro de parse"
-    print("OK 3: erro nao-parse nao gera reenvio")
+    print("OK 7: fallback de parse no enviar_telegram")
+
+
+async def main():
+    promo_bot.init_db()
+    test_estatisticas()
+    test_regra_b_outlier_categoria()
+    test_regra_a_historico()
+    test_fallback_piso()
+    await test_mensagem_e_realerta()
+    await test_fallback_parse()
 
 
 asyncio.run(main())

@@ -13,6 +13,12 @@ TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 INTERVALO_CHECAGEM = int(os.environ.get("INTERVALO_CHECAGEM", 300))
 DB_PATH = os.environ.get("DB_PATH", "/app/data/historico.db")
 
+FATOR_MEDIA = float(os.environ.get("FATOR_MEDIA", 0.85))
+DIAS_HISTORICO = int(os.environ.get("DIAS_HISTORICO", 30))
+MIN_AMOSTRAS = int(os.environ.get("MIN_AMOSTRAS", 3))
+MIN_PRODUTOS_CATEGORIA = int(os.environ.get("MIN_PRODUTOS_CATEGORIA", 5))
+QUEDA_PARA_REALERTAR = float(os.environ.get("QUEDA_PARA_REALERTAR", 0.05))
+
 
 CATEGORIAS = [
     # --- KABUM ---
@@ -101,23 +107,52 @@ def init_db():
     columns = [row[1] for row in cursor.fetchall()]
     if 'created_at' not in columns:
         cursor.execute("ALTER TABLE alertas ADD COLUMN created_at TEXT DEFAULT CURRENT_TIMESTAMP")
+    cursor.execute('''CREATE TABLE IF NOT EXISTS precos (
+        id TEXT,
+        titulo TEXT,
+        preco REAL,
+        coletado_em TEXT DEFAULT CURRENT_TIMESTAMP
+    )''')
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_precos_id_tempo ON precos(id, coletado_em)")
     conn.commit()
     conn.close()
 
-def ja_alertou(anuncio_id):
+def ultimo_preco_alertado(anuncio_id):
     conn = sqlite3.connect(DB_PATH, timeout=10.0)
     cursor = conn.cursor()
-    cursor.execute("SELECT 1 FROM alertas WHERE id = ?", (anuncio_id,))
+    cursor.execute("SELECT preco FROM alertas WHERE id = ? ORDER BY rowid DESC LIMIT 1", (anuncio_id,))
     res = cursor.fetchone()
     conn.close()
-    return res is not None
+    return res[0] if res else None
 
 def salvar_alerta(anuncio_id, titulo, preco):
     conn = sqlite3.connect(DB_PATH, timeout=10.0)
     cursor = conn.cursor()
-    cursor.execute("INSERT INTO alertas (id, titulo, preco) VALUES (?, ?, ?)", (anuncio_id, titulo, preco))
+    cursor.execute("UPDATE alertas SET titulo = ?, preco = ? WHERE id = ?", (titulo, preco, anuncio_id))
+    if cursor.rowcount == 0:
+        cursor.execute("INSERT INTO alertas (id, titulo, preco) VALUES (?, ?, ?)", (anuncio_id, titulo, preco))
     conn.commit()
     conn.close()
+
+def registrar_preco(id_unico, titulo, preco):
+    conn = sqlite3.connect(DB_PATH, timeout=10.0)
+    cursor = conn.cursor()
+    cursor.execute("SELECT preco FROM precos WHERE id = ? ORDER BY rowid DESC LIMIT 1", (id_unico,))
+    ultimo = cursor.fetchone()
+    if ultimo is None or ultimo[0] != preco:
+        cursor.execute("INSERT INTO precos (id, titulo, preco) VALUES (?, ?, ?)", (id_unico, titulo, preco))
+        conn.commit()
+    conn.close()
+
+def historico_precos(id_unico, dias=None):
+    dias = dias or DIAS_HISTORICO
+    conn = sqlite3.connect(DB_PATH, timeout=10.0)
+    cursor = conn.cursor()
+    limite = (datetime.utcnow() - timedelta(days=dias)).strftime('%Y-%m-%d %H:%M:%S')
+    cursor.execute("SELECT preco FROM precos WHERE id = ? AND coletado_em >= ?", (id_unico, limite))
+    precos = [row[0] for row in cursor.fetchall()]
+    conn.close()
+    return precos
 
 def limpar_alertas_antigos():
     try:
@@ -135,6 +170,61 @@ def limpar_alertas_antigos():
             print(f"[🧹 Limpeza] {removidos} alertas antigos removidos (>{30} dias).")
     except Exception as e:
         print(f"[❌ Erro Limpeza] Falha ao limpar banco: {e}")
+
+def limpar_precos_antigos():
+    try:
+        conn = sqlite3.connect(DB_PATH, timeout=10.0)
+        cursor = conn.cursor()
+        limite = datetime.utcnow() - timedelta(days=90)
+        limite_str = limite.strftime('%Y-%m-%d %H:%M:%S')
+        cursor.execute("DELETE FROM precos WHERE coletado_em < ?", (limite_str,))
+        removidos = cursor.rowcount
+        conn.commit()
+        conn.close()
+        if removidos > 0:
+            print(f"[🧹 Limpeza] {removidos} registros de preco antigos removidos (>90 dias).")
+    except Exception as e:
+        print(f"[❌ Erro Limpeza] Falha ao limpar historico de precos: {e}")
+
+def percentil(valores, p):
+    if not valores:
+        return None
+    ordenados = sorted(valores)
+    k = (len(ordenados) - 1) * p
+    f = int(k)
+    c = f + 1
+    if c >= len(ordenados):
+        return ordenados[-1]
+    return ordenados[f] + (ordenados[c] - ordenados[f]) * (k - f)
+
+def avaliar_preco_dinamico(id_unico, preco, precos_categoria):
+    historico = historico_precos(id_unico)
+    if len(historico) >= MIN_AMOSTRAS:
+        media = sum(historico) / len(historico)
+        minimo = min(historico)
+        p25 = percentil(historico, 0.25)
+        if preco < minimo:
+            return True, "🔥 Novo menor preço!"
+        if preco <= media * FATOR_MEDIA:
+            pct = (1 - preco / media) * 100
+            return True, f"📉 {pct:.0f}% abaixo da média"
+        if preco <= p25:
+            return True, "📉 Preço abaixo do percentil 25 do histórico"
+        return False, None
+    if precos_categoria and len(precos_categoria) >= MIN_PRODUTOS_CATEGORIA:
+        q25 = percentil(precos_categoria, 0.25)
+        if preco <= q25:
+            return True, "⚡ Outlier barato da categoria"
+    return False, None
+
+def verificar_preco_baixo(id_unico, preco, precos_categoria, config):
+    eh_baixo, motivo = avaliar_preco_dinamico(id_unico, preco, precos_categoria)
+    if eh_baixo:
+        return True, motivo
+    piso = config.get("piso_bug")
+    if piso is not None and 100.0 < preco <= piso:
+        return True, "🛟 Trava de segurança (piso manual)"
+    return False, None
 
 async def enviar_telegram(mensagem):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
@@ -159,7 +249,7 @@ async def teste_telegram():
     print("🧪 Testando conexão com o Telegram...")
     await enviar_telegram("🤖 <b>Bot Multi-Loja V6.0 online!</b>\nMonitorando KaBuM e Amazon (Pichau/Terabyte ativadas em background)!")
 
-async def processar_produto(id_produto, titulo, preco_float, link, config):
+async def processar_produto(id_produto, titulo, preco_float, link, config, precos_categoria=None):
     try:
         if not id_produto or not titulo or preco_float <= 0:
             return False
@@ -175,16 +265,25 @@ async def processar_produto(id_produto, titulo, preco_float, link, config):
         if termos_obrigatorios and not any(termo in titulo_limpo for termo in termos_obrigatorios):
             return False
 
-        # 3. Validação do Bug / Desconto e Telegram
-        if 100.0 < preco_float <= config["piso_bug"]:
-            id_unico = f"{config['site']}_{id_produto}"
-            print(f"   [✅] PASSOU NO FILTRO! -> {titulo[:45]}... | R$ {preco_float:.2f}")
-            if not ja_alertou(id_unico):
-                msg = f"🚨 <b>ALERTA DE PREÇO: {config['nome']}</b> 🚨\n\n🖥 {html.escape(titulo)}\n💵 <b>R$ {preco_float:.2f}</b>\n\n🛒 <a href=\"{link}\">Comprar</a>"
+        id_unico = f"{config['site']}_{id_produto}"
+        eh_baixo, motivo = verificar_preco_baixo(id_unico, preco_float, precos_categoria, config)
+
+        # 3. Registra o preço no histórico (apenas quando muda) para alimentar as regras
+        registrar_preco(id_unico, titulo, preco_float)
+
+        if eh_baixo:
+            print(f"   [✅] PASSOU NO FILTRO! -> {titulo[:45]}... | R$ {preco_float:.2f} | {motivo}")
+            ultimo_alerta = ultimo_preco_alertado(id_unico)
+            if ultimo_alerta is None:
+                msg = f"🚨 <b>ALERTA DE PREÇO: {config['nome']}</b> 🚨\n\n{motivo}\n\n🖥 {html.escape(titulo)}\n💵 <b>R$ {preco_float:.2f}</b>\n\n🛒 <a href=\"{link}\">Comprar</a>"
+                await enviar_telegram(msg)
+                salvar_alerta(id_unico, titulo, preco_float)
+            elif preco_float <= ultimo_alerta * (1 - QUEDA_PARA_REALERTAR):
+                msg = f"🚨 <b>PREÇO CAIU AINDA MAIS: {config['nome']}</b> 🚨\n\n{motivo}\n\n🖥 {html.escape(titulo)}\n💵 <b>R$ {preco_float:.2f}</b> (antes R$ {ultimo_alerta:.2f})\n\n🛒 <a href=\"{link}\">Comprar</a>"
                 await enviar_telegram(msg)
                 salvar_alerta(id_unico, titulo, preco_float)
             else:
-                print(f"   [💤] Produto já alertado anteriormente.")
+                print(f"   [💤] Já alertado; queda insuficiente para re-alertar.")
         return True
     except Exception as e:
         print(f"Erro ao processar produto individual: {e}")
@@ -193,6 +292,7 @@ async def processar_produto(id_produto, titulo, preco_float, link, config):
 async def analisar_api_kabum(dados_json, config):
     produtos = dados_json.get('data', [])
     print(f"📦 Recebidos {len(produtos)} produtos via KaBuM API.")
+    resultado = []
     for item in produtos:
         id_produto = str(item.get("id") or item.get("code", ""))
         atributos = item.get("attributes", {})
@@ -200,12 +300,17 @@ async def analisar_api_kabum(dados_json, config):
         preco_bruto = atributos.get("price_with_discount") or item.get("price", 0)
         friendly_name = atributos.get("friendly_name") or item.get("friendlyName", "produto")
         link = f"https://www.kabum.com.br/produto/{id_produto}/{friendly_name}"
-        await processar_produto(id_produto, titulo, float(preco_bruto), link, config)
+        try:
+            resultado.append((id_produto, titulo, float(preco_bruto), link))
+        except ValueError:
+            continue
+    return resultado
 
 async def analisar_amazon(html_content, config):
     soup = BeautifulSoup(html_content, 'html.parser')
     items = soup.select('div[data-component-type="s-search-result"]')
     print(f"📦 Recebidos {len(items)} produtos via Amazon HTML.")
+    resultado = []
     for item in items:
         id_produto = item.get('data-asin', '')
         titulo_elem = item.select_one('h2 a span') or item.select_one('h2 span') or item.select_one('.a-text-normal')
@@ -223,14 +328,14 @@ async def analisar_amazon(html_content, config):
             frac_str = preco_fraction.text.strip() if preco_fraction else "00"
             try:
                 preco_float = float(f"{whole_str}.{frac_str}")
-                # Print opcional para você ver os preços que a Amazon está retornando
-                # print(f"   [Amazon] {titulo[:40]}... | R$ {preco_float}")
-                await processar_produto(id_produto, titulo, preco_float, link, config)
+                resultado.append((id_produto, titulo, preco_float, link))
             except ValueError:
                 continue
+    return resultado
 
 async def analisar_pichau(html_content, config):
     soup = BeautifulSoup(html_content, 'html.parser')
+    resultado = []
     script_next = soup.find('script', id='__NEXT_DATA__')
     if script_next:
         try:
@@ -248,14 +353,16 @@ async def analisar_pichau(html_content, config):
                     preco_float = float(item.get('price_final') or item.get('price', 0))
                     slug = item.get('url_key') or item.get('slug', '')
                     link = f"https://www.pichau.com.br/{slug}" if slug else config['url']
-                    await processar_produto(id_produto, titulo, preco_float, link, config)
+                    resultado.append((id_produto, titulo, preco_float, link))
         except Exception:
             pass
+    return resultado
 
 async def analisar_terabyte(html_content, config):
     soup = BeautifulSoup(html_content, 'html.parser')
     cards = soup.select('.pbox')
     print(f"📦 Recebidos {len(cards)} produtos via Terabyte HTML.")
+    resultado = []
     for card in cards:
         link_elem = card.select_one('a.pbox-title')
         preco_elem = card.select_one('.prod-pnew span') or card.select_one('.val-avista')
@@ -268,9 +375,10 @@ async def analisar_terabyte(html_content, config):
             preco_texto = preco_elem.text.replace('R$', '').replace('.', '').replace(',', '.').strip()
             try:
                 preco_float = float(re.sub(r'[^\d.]', '', preco_texto))
-                await processar_produto(id_produto, titulo, preco_float, link, config)
+                resultado.append((id_produto, titulo, preco_float, link))
             except ValueError:
                 continue
+    return resultado
 
 async def raspar_vitrine(config):
     print(f"\n🔎 Solicitando: {config['nome']}")
@@ -299,13 +407,18 @@ async def raspar_vitrine(config):
         
         if response.status_code == 200 and "just a moment" not in response.text.lower() and "cloudflare" not in response.text.lower():
             if site == "kabum_api":
-                await analisar_api_kabum(response.json(), config)
+                produtos = await analisar_api_kabum(response.json(), config)
             elif site == "amazon":
-                await analisar_amazon(response.text, config)
+                produtos = await analisar_amazon(response.text, config)
             elif site == "pichau":
-                await analisar_pichau(response.text, config)
+                produtos = await analisar_pichau(response.text, config)
             elif site == "terabyte":
-                await analisar_terabyte(response.text, config)
+                produtos = await analisar_terabyte(response.text, config)
+            else:
+                produtos = []
+            precos_categoria = [p[2] for p in produtos if p[2] > 0]
+            for id_produto, titulo, preco, link in produtos:
+                await processar_produto(id_produto, titulo, preco, link, config, precos_categoria)
         else:
             print(f"⚠️ Acesso bloqueado / Firewall ativado (Status: {response.status_code}). Site manteve o escudo levantado para nosso IP de Datacenter.")
             
@@ -320,6 +433,7 @@ async def main():
     while True:
         print(f"\n[{datetime.now().strftime('%H:%M:%S')}] 🔄 Iniciando varredura em massa...")
         limpar_alertas_antigos()
+        limpar_precos_antigos()
         
         for cat in CATEGORIAS:
             await raspar_vitrine(cat)
