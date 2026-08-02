@@ -207,6 +207,13 @@ def test_carregar_categorias():
     print("OK 12: carregador de categorias (json + fallback)")
 
 
+def test_paginacao_kabum():
+    url = "https://servicespub.prod.api.aws.grupokabum.com.br/catalog/v2/products?query=rtx%205060&page_number=1&page_size=100"
+    assert promo_bot.url_kabum_pagina(url, 1) == url
+    assert promo_bot.url_kabum_pagina(url, 2) == url.replace("page_number=1", "page_number=2")
+    print("OK 13: paginacao kabum (rewrite de URL)")
+
+
 async def main():
     promo_bot.init_db()
     test_estatisticas()
@@ -220,6 +227,7 @@ async def main():
     test_link_afiliado()
     test_contexto_historico()
     test_carregar_categorias()
+    test_paginacao_kabum()
 
 
 asyncio.run(main())
