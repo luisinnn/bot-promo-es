@@ -1,0 +1,94 @@
+[
+  {
+    "nome": "KaBuM - RTX 5060",
+    "url": "https://servicespub.prod.api.aws.grupokabum.com.br/catalog/v2/products?query=rtx%205060&page_number=1&page_size=100",
+    "termos_obrigatorios": ["rtx5060"],
+    "piso_bug": 2400.00,
+    "site": "kabum_api"
+  },
+  {
+    "nome": "KaBuM - RTX 3060",
+    "url": "https://servicespub.prod.api.aws.grupokabum.com.br/catalog/v2/products?query=rtx%203060&page_number=1&page_size=100",
+    "termos_obrigatorios": ["rtx3060"],
+    "piso_bug": 2200.00,
+    "site": "kabum_api"
+  },
+  {
+    "nome": "KaBuM - RX 7600 / RX 6600",
+    "url": "https://servicespub.prod.api.aws.grupokabum.com.br/catalog/v2/products?query=rx%206600&page_number=1&page_size=100",
+    "termos_obrigatorios": ["rx6600", "rx7600"],
+    "piso_bug": 1500.00,
+    "site": "kabum_api"
+  },
+  {
+    "nome": "KaBuM - SSD NVMe",
+    "url": "https://servicespub.prod.api.aws.grupokabum.com.br/catalog/v2/products?query=ssd%20nvme&page_number=1&page_size=100",
+    "termos_obrigatorios": ["nvme"],
+    "site": "kabum_api"
+  },
+  {
+    "nome": "KaBuM - RAM DDR5",
+    "url": "https://servicespub.prod.api.aws.grupokabum.com.br/catalog/v2/products?query=memoria%20ddr5&page_number=1&page_size=100",
+    "termos_obrigatorios": ["ddr5"],
+    "site": "kabum_api"
+  },
+  {
+    "nome": "KaBuM - Fonte 850W",
+    "url": "https://servicespub.prod.api.aws.grupokabum.com.br/catalog/v2/products?query=fonte%20850w&page_number=1&page_size=100",
+    "termos_obrigatorios": ["850w"],
+    "site": "kabum_api"
+  },
+  {
+    "nome": "Amazon - RTX 5060",
+    "url": "https://www.amazon.com.br/s?k=rtx+5060",
+    "termos_obrigatorios": ["rtx5060"],
+    "piso_bug": 2400.00,
+    "site": "amazon"
+  },
+  {
+    "nome": "Amazon - RTX 3060",
+    "url": "https://www.amazon.com.br/s?k=rtx+3060",
+    "termos_obrigatorios": ["rtx3060"],
+    "piso_bug": 2200.00,
+    "site": "amazon"
+  },
+  {
+    "nome": "Amazon - RX 6600 / RX 7600",
+    "url": "https://www.amazon.com.br/s?k=rx+6600",
+    "termos_obrigatorios": ["rx6600", "rx7600"],
+    "piso_bug": 1500.00,
+    "site": "amazon"
+  },
+  {
+    "nome": "Amazon - SSD NVMe",
+    "url": "https://www.amazon.com.br/s?k=ssd+nvme",
+    "termos_obrigatorios": ["nvme"],
+    "site": "amazon"
+  },
+  {
+    "nome": "Amazon - RAM DDR5",
+    "url": "https://www.amazon.com.br/s?k=memoria+ddr5",
+    "termos_obrigatorios": ["ddr5"],
+    "site": "amazon"
+  },
+  {
+    "nome": "Amazon - Fonte 850W",
+    "url": "https://www.amazon.com.br/s?k=fonte+850w",
+    "termos_obrigatorios": ["850w"],
+    "site": "amazon"
+  },
+  {
+    "nome": "Pichau - RTX 5060",
+    "url": "https://www.pichau.com.br/search?q=rtx%205060",
+    "termos_obrigatorios": ["rtx5060"],
+    "piso_bug": 2400.00,
+    "site": "pichau"
+  },
+  {
+    "nome": "Terabyte - RTX 5060",
+    "url": "https://www.terabyteshop.com.br/busca?str=rtx+5060",
+    "termos_obrigatorios": ["rtx5060"],
+    "piso_bug": 2400.00,
+    "site": "terabyte"
+  }
+]
