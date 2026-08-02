@@ -20,6 +20,7 @@ MIN_PRODUTOS_CATEGORIA = int(os.environ.get("MIN_PRODUTOS_CATEGORIA", 5))
 QUEDA_PARA_REALERTAR = float(os.environ.get("QUEDA_PARA_REALERTAR", 0.05))
 FATOR_OUTLIER = float(os.environ.get("FATOR_OUTLIER", 0.75))
 AMAZON_TAG = os.environ.get("AMAZON_TAG", "").strip()
+KABUM_PAGINAS = int(os.environ.get("KABUM_PAGINAS", 2))
 
 
 CATEGORIAS_PATH = os.environ.get("CATEGORIAS_PATH", "/app/categorias.json")
@@ -384,6 +385,23 @@ async def analisar_api_kabum(dados_json, config):
             continue
     return resultado
 
+def url_kabum_pagina(url, pagina):
+    if pagina <= 1:
+        return url
+    return re.sub(r'page_number=\d+', f'page_number={pagina}', url)
+
+async def analisar_kabum_paginado(session, config, headers):
+    dados = []
+    for pagina in range(1, KABUM_PAGINAS + 1):
+        url_pag = url_kabum_pagina(config["url"], pagina)
+        resp = session.get(url_pag, headers=headers, timeout=15)
+        if resp.status_code == 200 and "just a moment" not in resp.text.lower() and "cloudflare" not in resp.text.lower():
+            dados.extend(resp.json().get("data", []))
+        else:
+            print(f"   ⚠️ KaBuM página {pagina}: acesso bloqueado/falhou (status {resp.status_code}).")
+        await asyncio.sleep(1)
+    return await analisar_api_kabum({"data": dados}, config)
+
 async def analisar_amazon(html_content, config):
     soup = BeautifulSoup(html_content, 'html.parser')
     items = soup.select('div[data-component-type="s-search-result"]')
@@ -524,20 +542,20 @@ async def raspar_vitrine(config):
                 except:
                     pass
 
-            response = session.get(config["url"], headers=headers, timeout=15)
-            
-            if response.status_code == 200 and "just a moment" not in response.text.lower() and "cloudflare" not in response.text.lower():
-                if site == "kabum_api":
-                    produtos = await analisar_api_kabum(response.json(), config)
-                elif site == "amazon":
-                    produtos = await analisar_amazon(response.text, config)
-                elif site == "pichau":
-                    produtos = await analisar_pichau(response.text, config)
-                else:
-                    produtos = []
+            if site == "kabum_api":
+                produtos = await analisar_kabum_paginado(session, config, headers)
             else:
-                print(f"⚠️ Acesso bloqueado / Firewall ativado (Status: {response.status_code}). Site manteve o escudo levantado para nosso IP de Datacenter.")
-                produtos = []
+                response = session.get(config["url"], headers=headers, timeout=15)
+                if response.status_code == 200 and "just a moment" not in response.text.lower() and "cloudflare" not in response.text.lower():
+                    if site == "amazon":
+                        produtos = await analisar_amazon(response.text, config)
+                    elif site == "pichau":
+                        produtos = await analisar_pichau(response.text, config)
+                    else:
+                        produtos = []
+                else:
+                    print(f"⚠️ Acesso bloqueado / Firewall ativado (Status: {response.status_code}). Site manteve o escudo levantado para nosso IP de Datacenter.")
+                    produtos = []
 
         # Regra B (fase fria) considera apenas produtos que passam nos filtros de título
         produtos_filtrados = [p for p in produtos if p[0] and p[1] and p[2] > 0 and titulo_aceitavel(p[1], config)]
