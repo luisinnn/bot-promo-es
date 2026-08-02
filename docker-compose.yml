@@ -9,6 +9,7 @@ services:
 
     volumes:
       - ./promo_bot.py:/app/promo_bot.py
+      - ./categorias.json:/app/categorias.json
       - ./dados:/app/data
 
     command: python /app/promo_bot.py

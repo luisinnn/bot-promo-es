@@ -19,9 +19,12 @@ MIN_AMOSTRAS = int(os.environ.get("MIN_AMOSTRAS", 3))
 MIN_PRODUTOS_CATEGORIA = int(os.environ.get("MIN_PRODUTOS_CATEGORIA", 5))
 QUEDA_PARA_REALERTAR = float(os.environ.get("QUEDA_PARA_REALERTAR", 0.05))
 FATOR_OUTLIER = float(os.environ.get("FATOR_OUTLIER", 0.75))
+AMAZON_TAG = os.environ.get("AMAZON_TAG", "").strip()
 
 
-CATEGORIAS = [
+CATEGORIAS_PATH = os.environ.get("CATEGORIAS_PATH", "/app/categorias.json")
+
+CATEGORIAS_PADRAO = [
     # --- KABUM ---
     {
         "nome": "KaBuM - RTX 5060",
@@ -87,14 +90,29 @@ CATEGORIAS = [
     }
 ]
 
-# Lista agressiva atualizada: Removemos TUF, STRIX e NITRO para não bloquear as placas!
+def carregar_categorias():
+    for caminho in [CATEGORIAS_PATH, "categorias.json"]:
+        try:
+            with open(caminho, "r", encoding="utf-8") as f:
+                dados = json.load(f)
+            if isinstance(dados, list) and dados:
+                print(f"📂 Categorias carregadas de {caminho} ({len(dados)} categorias).")
+                return dados
+        except Exception:
+            continue
+    print("[⚠️] categorias.json não encontrado; usando categorias padrão.")
+    return CATEGORIAS_PADRAO
+
+CATEGORIAS = carregar_categorias()
+
+# Lista agressiva: bloqueia PCs completos, notebooks e acessórios (não blocos de hardware puro)
 TERMOS_BLOQUEADOS = [
-    "pcgamer", "computador", "notebook", "cpu", "workstation", "desktop",
+    "pcgamer", "computador", "notebook", "workstation", "desktop",
     "zephyrus", "laptop", "tela", "g14", "g15", "g16", "legion", "ideapad", 
-    "macbook", "intelcore", "ryzen", "ssd",
-    # Acessórios que aparecem nas buscas e não são placas de vídeo
+    "macbook",
+    # Acessórios que aparecem nas buscas e não são peças de hardware
     "ventilador", "cabo", "extens", "riser", "backplate", "suporte",
-    "watercooler", "waterblock", "bracket", "adaptador", "fonte",
+    "watercooler", "waterblock", "bracket", "adaptador",
     # Marcas genéricas/off-brand da Amazon (vendedores não-confiáveis)
     "generic"
 ]
@@ -262,6 +280,39 @@ def verificar_preco_baixo(id_unico, preco, precos_categoria, config):
         return True, "🛟 Trava de segurança (piso manual)"
     return False, None
 
+def contexto_historico(id_unico):
+    historico = historico_precos(id_unico)
+    if len(historico) < MIN_AMOSTRAS:
+        return None
+    minimo = min(historico)
+    media = sum(historico) / len(historico)
+    return f"📈 Menor em {DIAS_HISTORICO}d: R$ {minimo:.2f} | Média: R$ {media:.2f}"
+
+def montar_link_afiliado(site, link):
+    if site == "amazon" and AMAZON_TAG:
+        sep = "&" if "?" in link else "?"
+        return f"{link}{sep}tag={AMAZON_TAG}"
+    return link
+
+def montar_mensagem(config, titulo, preco, link, motivo, id_unico, preco_anterior=None):
+    if preco_anterior is not None:
+        cabecalho = f"🚨 <b>PREÇO CAIU AINDA MAIS: {config['nome']}</b> 🚨"
+    else:
+        cabecalho = f"🚨 <b>ALERTA DE PREÇO: {config['nome']}</b> 🚨"
+    linhas = [cabecalho, "", motivo]
+    contexto = contexto_historico(id_unico)
+    if contexto:
+        linhas.append(contexto)
+    linhas.append("")
+    linhas.append(f"🖥 {html.escape(titulo)}")
+    preco_linha = f"💵 <b>R$ {preco:.2f}</b>"
+    if preco_anterior is not None:
+        preco_linha += f" (antes R$ {preco_anterior:.2f})"
+    linhas.append(preco_linha)
+    linhas.append("")
+    linhas.append(f"🛒 <a href=\"{montar_link_afiliado(config['site'], link)}\">Comprar</a>")
+    return "\n".join(linhas)
+
 async def enviar_telegram(mensagem):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {"chat_id": TELEGRAM_CHAT_ID, "text": mensagem, "parse_mode": "HTML"}
@@ -304,12 +355,10 @@ async def processar_produto(id_produto, titulo, preco_float, link, config, preco
             print(f"   [✅] PASSOU NO FILTRO! -> {titulo[:45]}... | R$ {preco_float:.2f} | {motivo}")
             ultimo_alerta = ultimo_preco_alertado(id_unico)
             if ultimo_alerta is None:
-                msg = f"🚨 <b>ALERTA DE PREÇO: {config['nome']}</b> 🚨\n\n{motivo}\n\n🖥 {html.escape(titulo)}\n💵 <b>R$ {preco_float:.2f}</b>\n\n🛒 <a href=\"{link}\">Comprar</a>"
-                await enviar_telegram(msg)
+                await enviar_telegram(montar_mensagem(config, titulo, preco_float, link, motivo, id_unico))
                 salvar_alerta(id_unico, titulo, preco_float)
             elif preco_float <= ultimo_alerta * (1 - QUEDA_PARA_REALERTAR):
-                msg = f"🚨 <b>PREÇO CAIU AINDA MAIS: {config['nome']}</b> 🚨\n\n{motivo}\n\n🖥 {html.escape(titulo)}\n💵 <b>R$ {preco_float:.2f}</b> (antes R$ {ultimo_alerta:.2f})\n\n🛒 <a href=\"{link}\">Comprar</a>"
-                await enviar_telegram(msg)
+                await enviar_telegram(montar_mensagem(config, titulo, preco_float, link, motivo, id_unico, preco_anterior=ultimo_alerta))
                 salvar_alerta(id_unico, titulo, preco_float)
             else:
                 print(f"   [💤] Já alertado; queda insuficiente para re-alertar.")

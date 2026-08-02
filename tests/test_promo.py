@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 import sys
 import tempfile
@@ -174,6 +175,38 @@ async def test_analisar_terabyte():
     print("OK 9: parser terabyte (estrutura nova product-item)")
 
 
+def test_link_afiliado():
+    promo_bot.AMAZON_TAG = "meutag-20"
+    assert promo_bot.montar_link_afiliado("amazon", "https://www.amazon.com.br/dp/ABC") == "https://www.amazon.com.br/dp/ABC?tag=meutag-20"
+    assert promo_bot.montar_link_afiliado("amazon", "https://www.amazon.com.br/dp/ABC?psc=1&x=y") == "https://www.amazon.com.br/dp/ABC?psc=1&x=y&tag=meutag-20"
+    assert promo_bot.montar_link_afiliado("kabum_api", "https://www.kabum.com.br/produto/123") == "https://www.kabum.com.br/produto/123"
+    promo_bot.AMAZON_TAG = ""
+    print("OK 10: link de afiliado (amazon tag)")
+
+
+def test_contexto_historico():
+    promo_bot.registrar_preco("site_ctx", "produto", 100.0)
+    promo_bot.registrar_preco("site_ctx", "produto", 90.0)
+    promo_bot.registrar_preco("site_ctx", "produto", 110.0)
+    ctx = promo_bot.contexto_historico("site_ctx")
+    assert ctx is not None and "Menor em" in ctx and "90.00" in ctx
+    assert promo_bot.contexto_historico("site_sem_hist") is None
+    print("OK 11: contexto historico")
+
+
+def test_carregar_categorias():
+    caminho = os.path.join(tempfile.gettempdir(), "categorias_teste.json")
+    with open(caminho, "w", encoding="utf-8") as f:
+        json.dump([{"nome": "Teste", "site": "amazon"}], f)
+    promo_bot.CATEGORIAS_PATH = caminho
+    cats = promo_bot.carregar_categorias()
+    assert len(cats) == 1 and cats[0]["nome"] == "Teste"
+    promo_bot.CATEGORIAS_PATH = os.path.join(tempfile.gettempdir(), "nao_existe.json")
+    cats = promo_bot.carregar_categorias()
+    assert len(cats) > 0
+    print("OK 12: carregador de categorias (json + fallback)")
+
+
 async def main():
     promo_bot.init_db()
     test_estatisticas()
@@ -184,6 +217,9 @@ async def main():
     await test_mensagem_e_realerta()
     await test_fallback_parse()
     await test_analisar_terabyte()
+    test_link_afiliado()
+    test_contexto_historico()
+    test_carregar_categorias()
 
 
 asyncio.run(main())

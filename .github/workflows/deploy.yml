@@ -31,7 +31,7 @@ jobs:
           username: ${{ secrets.SSH_USERNAME }}
           key: ${{ secrets.SSH_KEY }}
           port: 22
-          source: "docker-compose.yml,Dockerfile,promo_bot.py,requirements.txt"
+          source: "docker-compose.yml,Dockerfile,promo_bot.py,requirements.txt,categorias.json"
           target: "/home/${{ secrets.SSH_USERNAME }}/bot_promocoes"
 
       - name: Rebuild e subir containers na EC2

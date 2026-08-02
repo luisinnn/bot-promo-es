@@ -11,5 +11,6 @@ RUN pip install --no-cache-dir -r requirements.txt && \
     rm -rf ~/.cache/ms-playwright/ffmpeg-*
 
 COPY promo_bot.py .
+COPY categorias.json .
 
 CMD ["python", "promo_bot.py"]
