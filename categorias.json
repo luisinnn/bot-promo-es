@@ -33,6 +33,12 @@
     "site": "kabum_api"
   },
   {
+    "nome": "KaBuM - RAM DDR4",
+    "url": "https://servicespub.prod.api.aws.grupokabum.com.br/catalog/v2/products?query=memoria%20ddr4&page_number=1&page_size=100",
+    "termos_obrigatorios": ["ddr4"],
+    "site": "kabum_api"
+  },
+  {
     "nome": "KaBuM - Fonte 850W",
     "url": "https://servicespub.prod.api.aws.grupokabum.com.br/catalog/v2/products?query=fonte%20850w&page_number=1&page_size=100",
     "termos_obrigatorios": ["850w"],
@@ -69,6 +75,12 @@
     "nome": "Amazon - RAM DDR5",
     "url": "https://www.amazon.com.br/s?k=memoria+ddr5",
     "termos_obrigatorios": ["ddr5"],
+    "site": "amazon"
+  },
+  {
+    "nome": "Amazon - RAM DDR4",
+    "url": "https://www.amazon.com.br/s?k=memoria+ddr4",
+    "termos_obrigatorios": ["ddr4"],
     "site": "amazon"
   },
   {
