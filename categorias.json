@@ -21,27 +21,52 @@
     "site": "kabum_api"
   },
   {
-    "nome": "KaBuM - SSD NVMe",
-    "url": "https://servicespub.prod.api.aws.grupokabum.com.br/catalog/v2/products?query=ssd%20nvme&page_number=1&page_size=100",
-    "termos_obrigatorios": ["nvme"],
-    "site": "kabum_api"
-  },
-  {
-    "nome": "KaBuM - RAM DDR5",
-    "url": "https://servicespub.prod.api.aws.grupokabum.com.br/catalog/v2/products?query=memoria%20ddr5&page_number=1&page_size=100",
-    "termos_obrigatorios": ["ddr5"],
-    "site": "kabum_api"
-  },
-  {
-    "nome": "KaBuM - RAM DDR4",
+    "nome": "KaBuM - RAM DDR4 16GB",
     "url": "https://servicespub.prod.api.aws.grupokabum.com.br/catalog/v2/products?query=memoria%20ddr4&page_number=1&page_size=100",
-    "termos_obrigatorios": ["ddr4"],
+    "termos_obrigatorios": ["ddr4", "16gb", "2x8gb"],
+    "piso_bug": 900.00,
+    "site": "kabum_api"
+  },
+  {
+    "nome": "KaBuM - RAM DDR4 32GB",
+    "url": "https://servicespub.prod.api.aws.grupokabum.com.br/catalog/v2/products?query=memoria%20ddr4&page_number=1&page_size=100",
+    "termos_obrigatorios": ["ddr4", "32gb", "2x16gb"],
+    "piso_bug": 1600.00,
+    "site": "kabum_api"
+  },
+  {
+    "nome": "KaBuM - RAM DDR5 16GB",
+    "url": "https://servicespub.prod.api.aws.grupokabum.com.br/catalog/v2/products?query=memoria%20ddr5&page_number=1&page_size=100",
+    "termos_obrigatorios": ["ddr5", "16gb", "2x8gb"],
+    "piso_bug": 1200.00,
+    "site": "kabum_api"
+  },
+  {
+    "nome": "KaBuM - RAM DDR5 32GB",
+    "url": "https://servicespub.prod.api.aws.grupokabum.com.br/catalog/v2/products?query=memoria%20ddr5&page_number=1&page_size=100",
+    "termos_obrigatorios": ["ddr5", "32gb", "2x16gb"],
+    "piso_bug": 2200.00,
+    "site": "kabum_api"
+  },
+  {
+    "nome": "KaBuM - SSD NVMe 512GB",
+    "url": "https://servicespub.prod.api.aws.grupokabum.com.br/catalog/v2/products?query=ssd%20nvme&page_number=1&page_size=100",
+    "termos_obrigatorios": ["nvme", "512gb", "500gb"],
+    "piso_bug": 600.00,
+    "site": "kabum_api"
+  },
+  {
+    "nome": "KaBuM - SSD NVMe 1TB",
+    "url": "https://servicespub.prod.api.aws.grupokabum.com.br/catalog/v2/products?query=ssd%20nvme&page_number=1&page_size=100",
+    "termos_obrigatorios": ["nvme", "1tb"],
+    "piso_bug": 900.00,
     "site": "kabum_api"
   },
   {
     "nome": "KaBuM - Fonte 850W",
     "url": "https://servicespub.prod.api.aws.grupokabum.com.br/catalog/v2/products?query=fonte%20850w&page_number=1&page_size=100",
     "termos_obrigatorios": ["850w"],
+    "piso_bug": 800.00,
     "site": "kabum_api"
   },
   {
@@ -66,27 +91,52 @@
     "site": "amazon"
   },
   {
-    "nome": "Amazon - SSD NVMe",
-    "url": "https://www.amazon.com.br/s?k=ssd+nvme",
-    "termos_obrigatorios": ["nvme"],
-    "site": "amazon"
-  },
-  {
-    "nome": "Amazon - RAM DDR5",
-    "url": "https://www.amazon.com.br/s?k=memoria+ddr5",
-    "termos_obrigatorios": ["ddr5"],
-    "site": "amazon"
-  },
-  {
-    "nome": "Amazon - RAM DDR4",
+    "nome": "Amazon - RAM DDR4 16GB",
     "url": "https://www.amazon.com.br/s?k=memoria+ddr4",
-    "termos_obrigatorios": ["ddr4"],
+    "termos_obrigatorios": ["ddr4", "16gb", "2x8gb"],
+    "piso_bug": 900.00,
+    "site": "amazon"
+  },
+  {
+    "nome": "Amazon - RAM DDR4 32GB",
+    "url": "https://www.amazon.com.br/s?k=memoria+ddr4",
+    "termos_obrigatorios": ["ddr4", "32gb", "2x16gb"],
+    "piso_bug": 1600.00,
+    "site": "amazon"
+  },
+  {
+    "nome": "Amazon - RAM DDR5 16GB",
+    "url": "https://www.amazon.com.br/s?k=memoria+ddr5",
+    "termos_obrigatorios": ["ddr5", "16gb", "2x8gb"],
+    "piso_bug": 1200.00,
+    "site": "amazon"
+  },
+  {
+    "nome": "Amazon - RAM DDR5 32GB",
+    "url": "https://www.amazon.com.br/s?k=memoria+ddr5",
+    "termos_obrigatorios": ["ddr5", "32gb", "2x16gb"],
+    "piso_bug": 2200.00,
+    "site": "amazon"
+  },
+  {
+    "nome": "Amazon - SSD NVMe 512GB",
+    "url": "https://www.amazon.com.br/s?k=ssd+nvme",
+    "termos_obrigatorios": ["nvme", "512gb", "500gb"],
+    "piso_bug": 600.00,
+    "site": "amazon"
+  },
+  {
+    "nome": "Amazon - SSD NVMe 1TB",
+    "url": "https://www.amazon.com.br/s?k=ssd+nvme",
+    "termos_obrigatorios": ["nvme", "1tb"],
+    "piso_bug": 900.00,
     "site": "amazon"
   },
   {
     "nome": "Amazon - Fonte 850W",
     "url": "https://www.amazon.com.br/s?k=fonte+850w",
     "termos_obrigatorios": ["850w"],
+    "piso_bug": 800.00,
     "site": "amazon"
   },
   {

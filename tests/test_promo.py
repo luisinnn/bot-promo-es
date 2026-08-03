@@ -214,6 +214,17 @@ def test_paginacao_kabum():
     print("OK 13: paginacao kabum (rewrite de URL)")
 
 
+def test_piso_como_teto():
+    promo_bot.registrar_preco("site_teto", "produto", 2000.0)
+    promo_bot.registrar_preco("site_teto", "produto", 1800.0)
+    promo_bot.registrar_preco("site_teto", "produto", 2100.0)
+    eh, _ = promo_bot.verificar_preco_baixo("site_teto", 1700.0, None, {"piso_bug": 1500.0})
+    assert not eh, "teto (piso_bug) deveria bloquear mesmo com gatilho dinamico"
+    eh, motivo = promo_bot.verificar_preco_baixo("site_teto", 1450.0, None, {"piso_bug": 1500.0})
+    assert eh and "menor preço" in motivo
+    print("OK 14: piso_bug como teto da categoria")
+
+
 async def main():
     promo_bot.init_db()
     test_estatisticas()
@@ -228,6 +239,7 @@ async def main():
     test_contexto_historico()
     test_carregar_categorias()
     test_paginacao_kabum()
+    test_piso_como_teto()
 
 
 asyncio.run(main())
