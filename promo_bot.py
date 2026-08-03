@@ -112,7 +112,7 @@ TERMOS_BLOQUEADOS = [
     "zephyrus", "laptop", "tela", "g14", "g15", "g16", "legion", "ideapad", 
     "macbook",
     # Acessórios que aparecem nas buscas e não são peças de hardware
-    "ventilador", "cabo", "extens", "riser", "backplate", "suporte",
+    "ventilador", "cabo", "extens", "expansao", "riser", "backplate", "suporte",
     "watercooler", "waterblock", "bracket", "adaptador",
     # Marcas genéricas/off-brand da Amazon (vendedores não-confiáveis)
     "generic"
@@ -273,10 +273,12 @@ def avaliar_preco_dinamico(id_unico, preco, precos_categoria):
     return False, None
 
 def verificar_preco_baixo(id_unico, preco, precos_categoria, config):
+    piso = config.get("piso_bug")
+    if piso is not None and preco > piso:
+        return False, None
     eh_baixo, motivo = avaliar_preco_dinamico(id_unico, preco, precos_categoria)
     if eh_baixo:
         return True, motivo
-    piso = config.get("piso_bug")
     if piso is not None and 100.0 < preco <= piso:
         return True, "🛟 Trava de segurança (piso manual)"
     return False, None
