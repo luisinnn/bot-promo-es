@@ -225,6 +225,15 @@ def test_piso_como_teto():
     print("OK 14: piso_bug como teto da categoria")
 
 
+def test_termos_todos_and():
+    cfg = {"termos_todos": ["nvme"], "termos_obrigatorios": ["512gb", "500gb"]}
+    assert promo_bot.titulo_aceitavel("SSD NVMe 512GB M.2 2280 PCIe Gen3", cfg)
+    assert promo_bot.titulo_aceitavel("SSD M.2 NVMe 500GB Kingston", cfg)
+    assert not promo_bot.titulo_aceitavel("SSD NVMe 256GB Redragon", cfg)
+    assert not promo_bot.titulo_aceitavel("SSD SATA 512GB Kingston", cfg)
+    print("OK 15: termos_todos (AND: tipo + capacidade)")
+
+
 async def main():
     promo_bot.init_db()
     test_estatisticas()
@@ -240,6 +249,7 @@ async def main():
     test_carregar_categorias()
     test_paginacao_kabum()
     test_piso_como_teto()
+    test_termos_todos_and()
 
 
 asyncio.run(main())

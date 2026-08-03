@@ -23,42 +23,48 @@
   {
     "nome": "KaBuM - RAM DDR4 16GB",
     "url": "https://servicespub.prod.api.aws.grupokabum.com.br/catalog/v2/products?query=memoria%20ddr4&page_number=1&page_size=100",
-    "termos_obrigatorios": ["ddr4", "16gb", "2x8gb"],
+    "termos_todos": ["ddr4"],
+    "termos_obrigatorios": ["16gb", "2x8gb"],
     "piso_bug": 900.00,
     "site": "kabum_api"
   },
   {
     "nome": "KaBuM - RAM DDR4 32GB",
     "url": "https://servicespub.prod.api.aws.grupokabum.com.br/catalog/v2/products?query=memoria%20ddr4&page_number=1&page_size=100",
-    "termos_obrigatorios": ["ddr4", "32gb", "2x16gb"],
+    "termos_todos": ["ddr4"],
+    "termos_obrigatorios": ["32gb", "2x16gb"],
     "piso_bug": 1600.00,
     "site": "kabum_api"
   },
   {
     "nome": "KaBuM - RAM DDR5 16GB",
     "url": "https://servicespub.prod.api.aws.grupokabum.com.br/catalog/v2/products?query=memoria%20ddr5&page_number=1&page_size=100",
-    "termos_obrigatorios": ["ddr5", "16gb", "2x8gb"],
+    "termos_todos": ["ddr5"],
+    "termos_obrigatorios": ["16gb", "2x8gb"],
     "piso_bug": 1200.00,
     "site": "kabum_api"
   },
   {
     "nome": "KaBuM - RAM DDR5 32GB",
     "url": "https://servicespub.prod.api.aws.grupokabum.com.br/catalog/v2/products?query=memoria%20ddr5&page_number=1&page_size=100",
-    "termos_obrigatorios": ["ddr5", "32gb", "2x16gb"],
+    "termos_todos": ["ddr5"],
+    "termos_obrigatorios": ["32gb", "2x16gb"],
     "piso_bug": 2200.00,
     "site": "kabum_api"
   },
   {
     "nome": "KaBuM - SSD NVMe 512GB",
     "url": "https://servicespub.prod.api.aws.grupokabum.com.br/catalog/v2/products?query=ssd%20nvme&page_number=1&page_size=100",
-    "termos_obrigatorios": ["nvme", "512gb", "500gb"],
+    "termos_todos": ["nvme"],
+    "termos_obrigatorios": ["512gb", "500gb"],
     "piso_bug": 600.00,
     "site": "kabum_api"
   },
   {
     "nome": "KaBuM - SSD NVMe 1TB",
     "url": "https://servicespub.prod.api.aws.grupokabum.com.br/catalog/v2/products?query=ssd%20nvme&page_number=1&page_size=100",
-    "termos_obrigatorios": ["nvme", "1tb"],
+    "termos_todos": ["nvme"],
+    "termos_obrigatorios": ["1tb"],
     "piso_bug": 900.00,
     "site": "kabum_api"
   },
@@ -93,42 +99,48 @@
   {
     "nome": "Amazon - RAM DDR4 16GB",
     "url": "https://www.amazon.com.br/s?k=memoria+ddr4",
-    "termos_obrigatorios": ["ddr4", "16gb", "2x8gb"],
+    "termos_todos": ["ddr4"],
+    "termos_obrigatorios": ["16gb", "2x8gb"],
     "piso_bug": 900.00,
     "site": "amazon"
   },
   {
     "nome": "Amazon - RAM DDR4 32GB",
     "url": "https://www.amazon.com.br/s?k=memoria+ddr4",
-    "termos_obrigatorios": ["ddr4", "32gb", "2x16gb"],
+    "termos_todos": ["ddr4"],
+    "termos_obrigatorios": ["32gb", "2x16gb"],
     "piso_bug": 1600.00,
     "site": "amazon"
   },
   {
     "nome": "Amazon - RAM DDR5 16GB",
     "url": "https://www.amazon.com.br/s?k=memoria+ddr5",
-    "termos_obrigatorios": ["ddr5", "16gb", "2x8gb"],
+    "termos_todos": ["ddr5"],
+    "termos_obrigatorios": ["16gb", "2x8gb"],
     "piso_bug": 1200.00,
     "site": "amazon"
   },
   {
     "nome": "Amazon - RAM DDR5 32GB",
     "url": "https://www.amazon.com.br/s?k=memoria+ddr5",
-    "termos_obrigatorios": ["ddr5", "32gb", "2x16gb"],
+    "termos_todos": ["ddr5"],
+    "termos_obrigatorios": ["32gb", "2x16gb"],
     "piso_bug": 2200.00,
     "site": "amazon"
   },
   {
     "nome": "Amazon - SSD NVMe 512GB",
     "url": "https://www.amazon.com.br/s?k=ssd+nvme",
-    "termos_obrigatorios": ["nvme", "512gb", "500gb"],
+    "termos_todos": ["nvme"],
+    "termos_obrigatorios": ["512gb", "500gb"],
     "piso_bug": 600.00,
     "site": "amazon"
   },
   {
     "nome": "Amazon - SSD NVMe 1TB",
     "url": "https://www.amazon.com.br/s?k=ssd+nvme",
-    "termos_obrigatorios": ["nvme", "1tb"],
+    "termos_todos": ["nvme"],
+    "termos_obrigatorios": ["1tb"],
     "piso_bug": 900.00,
     "site": "amazon"
   },
