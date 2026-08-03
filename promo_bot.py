@@ -249,6 +249,9 @@ def titulo_aceitavel(titulo, config):
     termos_obrigatorios = config.get("termos_obrigatorios", [])
     if termos_obrigatorios and not any(termo in titulo_limpo for termo in termos_obrigatorios):
         return False
+    termos_todos = config.get("termos_todos", [])
+    if termos_todos and not all(termo in titulo_limpo for termo in termos_todos):
+        return False
     return True
 
 def avaliar_preco_dinamico(id_unico, preco, precos_categoria):
